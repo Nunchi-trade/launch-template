@@ -21,10 +21,13 @@ import {IStakingManager} from "@kinetiq/lst/src/interfaces/IStakingManager.sol";
 import {DeployHelpers} from "./lib/DeployHelpers.sol";
 
 /// @title VerifyFirstMarket
-/// @notice Read-only per-phase verification harness for `DeployFirstMarket`. Mirrors the
-///         `SmokeTest.s.sol` pattern at the per-market layer — one external entry per
-///         DeployFirstMarket phase, takes (configPath, label), asserts the full set of
-///         EVM + HC invariants for that phase, reverts loudly on first mismatch.
+/// @notice Read-only per-phase verification harness for `DeployFirstMarket`. One external entry per
+///         deploy phase, asserts the full set of EVM + HC invariants for that phase, reverts loudly
+///         on first mismatch.
+///
+/// @notice Every phase takes `(marketConfigPath, globalConfigPath)` — same shape as
+///         `DeployFirstMarket`. Pass `""` for `globalConfigPath` to auto-resolve from the
+///         marketConfig's `network.name`.
 ///
 /// @dev    Pure reads — no broadcasts, no JSON writes, no state mutation. The HC-side checks
 ///         (`coreUserExists`, `spotBalance`, `delegatorSummary`) use `vm.rpc` to query the
@@ -34,7 +37,7 @@ import {DeployHelpers} from "./lib/DeployHelpers.sol";
 ///
 /// @dev    Usage:
 ///         forge script script/VerifyFirstMarket.s.sol:VerifyFirstMarket \
-///           --sig 'verifyDeployMarket(string,string)' $CONFIG_JSON firstMarket \
+///           --sig 'verifyDeployMarket(string,string)' "$MARKET_CONFIG_JSON" "$GLOBAL_CONFIG_JSON" \
 ///           --rpc-url $RPC_URL
 contract VerifyFirstMarket is Script {
     using stdJson for string;
@@ -59,27 +62,25 @@ contract VerifyFirstMarket is Script {
     ///         checks deployment validity — does NOT assert phase-transient state like
     ///         `bonded == false`. Run phase-specific verifies (verifyBondMarket, verifyCancelMarket)
     ///         for downstream phases.
-    function verifyDeployMarket(string memory configPath, string memory label) external {
-        string memory config = vm.readFile(configPath);
-        DeployHelpers.labelDeployed(config);
-        _requireMarket(config, label);
+    function verifyDeployMarket(string memory marketConfigPath, string memory globalConfigPath) external {
+        (string memory marketConfig, string memory globalConfig,) =
+            DeployHelpers.preflightMarketConfig(marketConfigPath, globalConfigPath);
+        DeployHelpers.labelDeployed(globalConfig);
 
         console.log("================ verifyDeployMarket ================");
-        console.log("label:", label);
 
-        IEXFactory f = IEXFactory(config.readDeployedAddress("EXFactory"));
-        string memory base = DeployHelpers.marketPath(label);
+        IEXFactory f = IEXFactory(globalConfig.readDeployedAddress("EXFactory"));
+        IEXFactory.MarketParams memory params = DeployHelpers.buildMarketParams(marketConfig, globalConfig);
 
         // ---- 1. JSON state ----
-        bytes32 marketId = config.readBytes32(string.concat(base, ".deployed.marketId"));
-        address exManager = config.readAddress(string.concat(base, ".deployed.exManager"));
+        bytes32 marketId = marketConfig.readBytes32(".deployed.marketId");
+        address exManager = marketConfig.readAddress(".deployed.exManager");
         require(marketId != bytes32(0), "verify: JSON marketId is zero");
         require(exManager != address(0), "verify: JSON exManager is zero");
 
         // If cancelled, market is deleted from factory — verifyCancelMarket handles that case.
         require(
-            !config.readBool(string.concat(base, ".deployed.cancelled")),
-            "verify: market is cancelled, use verifyCancelMarket instead"
+            !marketConfig.readBool(".deployed.cancelled"), "verify: market is cancelled, use verifyCancelMarket instead"
         );
 
         // ---- 2. Factory MarketInfo (skip checks that mutate post-bond) ----
@@ -88,14 +89,11 @@ contract VerifyFirstMarket is Script {
         require(info.exManager != address(0), "verify: market not registered in factory");
         require(info.cancelEligibleAt > 0, "verify: cancelEligibleAt should be set at deploy time");
 
-        // ---- 3. Identity params match JSON (admin/operator/enclaver). Skip opBond — that's
+        // ---- 3. Identity params match merged params (admin/operator/enclaver). Skip opBond — that's
         //         verified by verifyBondMarket since opBondEscrowed mutates post-bond.
-        address adminParam = config.readAddress(string.concat(base, ".params.admin"));
-        address operatorParam = config.readAddress(string.concat(base, ".params.operator"));
-        address enclaverParam = config.readAddress(string.concat(base, ".params.enclaver"));
-        require(info.admin == adminParam, "verify: MarketInfo.admin != params.admin");
-        require(info.operator == operatorParam, "verify: MarketInfo.operator != params.operator");
-        require(info.enclaver == enclaverParam, "verify: MarketInfo.enclaver != params.enclaver");
+        require(info.admin == params.admin, "verify: MarketInfo.admin != params.admin");
+        require(info.operator == params.operator, "verify: MarketInfo.operator != params.operator");
+        require(info.enclaver == params.enclaver, "verify: MarketInfo.enclaver != params.enclaver");
 
         // ---- 4. Reverse mapping + isMarket ----
         require(f.exManagerToMarketId(exManager) == marketId, "verify: factory.exManagerToMarketId reverse mismatch");
@@ -118,19 +116,18 @@ contract VerifyFirstMarket is Script {
         require(mc.stakeFeesThrottle != address(0), "verify: mc.stakeFeesThrottle is zero");
 
         // ---- 6. opBondEscrowed (lifecycle-aware): pre-bond == params.opBond; post-bond == 0
-        uint256 opBondParam = config.readUint(string.concat(base, ".params.opBond"));
         if (!info.bonded) {
-            require(info.opBondEscrowed == opBondParam, "verify: pre-bond opBondEscrowed != params.opBond");
+            require(info.opBondEscrowed == params.opBond, "verify: pre-bond opBondEscrowed != params.opBond");
         } else {
             require(info.opBondEscrowed == 0, "verify: post-bond opBondEscrowed should be 0");
         }
 
         // ---- 7. LST + Launch wiring (Router refs + EXManager refs + LFS/Throttle refs) ----
         _verifyLstWiring(f, mc);
-        _verifyLaunchWiring(config, base, f, mc, info);
+        _verifyLaunchWiring(globalConfig, params, f, mc, info);
 
         // ---- 8. Role assignments (controller-held + factory-held + per-market identifiers) ----
-        _verifyRoles(config, mc, info);
+        _verifyRoles(globalConfig, mc, info);
 
         console.log("[verifyDeployMarket] PASSED  marketId:", vm.toString(marketId));
         console.log("[verifyDeployMarket]         exManager:", exManager);
@@ -156,16 +153,16 @@ contract VerifyFirstMarket is Script {
     }
 
     /// @dev Verify Launch-layer contract wiring: EXManager refs to per-market suite, fee-distribution
-    ///      contracts (LFS + Throttle), and JSON params (gate, marketTier, opBond, deployerTreasury,
-    ///      buybackBps) all flow through correctly.
+    ///      contracts (LFS + Throttle), and merged-params fields (gate, marketTier, deployerTreasury,
+    ///      buybackBps) all flow through correctly. `globalConfig` is read for `.hyperliquid.hypeTokenId`.
     function _verifyLaunchWiring(
-        string memory config,
-        string memory base,
+        string memory globalConfig,
+        IEXFactory.MarketParams memory params,
         IEXFactory f,
         IEXFactory.MarketContracts memory mc,
         IEXFactory.MarketInfo memory info
     ) internal view {
-        address globalConfig = address(f.globalConfig());
+        address gc = address(f.globalConfig());
         address pauserRegistry = address(f.pauserRegistry());
 
         // EXManager wiring
@@ -178,36 +175,26 @@ contract VerifyFirstMarket is Script {
             "verify: EXManager.exStakingAccountant mismatch"
         );
         require(address(exMgr.blockedWithdrawalQueue()) == mc.bwq, "verify: EXManager.blockedWithdrawalQueue mismatch");
-        require(address(exMgr.globalConfig()) == globalConfig, "verify: EXManager.globalConfig mismatch");
+        require(address(exMgr.globalConfig()) == gc, "verify: EXManager.globalConfig mismatch");
         require(address(exMgr.pauserRegistry()) == pauserRegistry, "verify: EXManager.pauserRegistry mismatch");
-        require(
-            address(exMgr.gate()) == config.readAddress(string.concat(base, ".params.gate")),
-            "verify: EXManager.gate mismatch"
-        );
-        require(
-            exMgr.marketTier() == config.readUint(string.concat(base, ".params.marketTier")),
-            "verify: EXManager.marketTier mismatch"
-        );
+        require(address(exMgr.gate()) == params.gate, "verify: EXManager.gate mismatch");
+        require(exMgr.marketTier() == params.marketTier, "verify: EXManager.marketTier mismatch");
         require(exMgr.deployer() == info.deployer, "verify: EXManager.deployer != MarketInfo.deployer");
 
         // LaunchFeeSplitter wiring
         ILaunchFeeSplitter lfs = ILaunchFeeSplitter(mc.launchFeeSplitter);
-        require(address(lfs.globalConfig()) == globalConfig, "verify: LFS.globalConfig mismatch");
+        require(address(lfs.globalConfig()) == gc, "verify: LFS.globalConfig mismatch");
         require(
-            lfs.deployerTreasury() == config.readAddress(string.concat(base, ".params.deployerTreasury")),
-            "verify: LFS.deployerTreasury != params.deployerTreasury"
+            lfs.deployerTreasury() == params.deployerTreasury, "verify: LFS.deployerTreasury != params.deployerTreasury"
         );
-        require(
-            uint256(lfs.buybackBps()) == config.readUint(string.concat(base, ".params.buybackBps")),
-            "verify: LFS.buybackBps != params.buybackBps"
-        );
+        require(uint256(lfs.buybackBps()) == uint256(params.buybackBps), "verify: LFS.buybackBps != params.buybackBps");
 
         // StakeFeesThrottle wiring
         IStakeFeesThrottle throttle = IStakeFeesThrottle(mc.stakeFeesThrottle);
-        require(address(throttle.globalConfig()) == globalConfig, "verify: Throttle.globalConfig mismatch");
+        require(address(throttle.globalConfig()) == gc, "verify: Throttle.globalConfig mismatch");
         require(address(throttle.exManager()) == mc.exManager, "verify: Throttle.exManager mismatch");
         require(
-            uint256(throttle.hypeTokenId()) == config.readUint(".hyperliquid.hypeTokenId"),
+            uint256(throttle.hypeTokenId()) == globalConfig.readUint(".hyperliquid.hypeTokenId"),
             "verify: Throttle.hypeTokenId mismatch"
         );
     }
@@ -222,12 +209,13 @@ contract VerifyFirstMarket is Script {
     ///      - EXManager: factory RETAINS DEFAULT_ADMIN_ROLE (used by transferOperator/Admin/Enclaver).
     ///        params.operator holds OPERATOR_ROLE; controller holds RECOVERY_ROLE (via params.recoverer);
     ///        params.enclaver holds WALLET_ROLE.
-    function _verifyRoles(string memory config, IEXFactory.MarketContracts memory mc, IEXFactory.MarketInfo memory info)
-        internal
-        view
-    {
-        address controller = config.readDeployedAddress("ProtocolRolesController");
-        address factory = config.readDeployedAddress("EXFactory");
+    function _verifyRoles(
+        string memory globalConfig,
+        IEXFactory.MarketContracts memory mc,
+        IEXFactory.MarketInfo memory info
+    ) internal view {
+        address controller = globalConfig.readDeployedAddress("ProtocolRolesController");
+        address factory = globalConfig.readDeployedAddress("EXFactory");
 
         // ---- LST contracts: controller holds DEFAULT_ADMIN_ROLE; factory renounced ----
         address[6] memory lst = [
@@ -311,22 +299,20 @@ contract VerifyFirstMarket is Script {
     /// @notice Asserts HC-side state after the activation token bridge settles (~1 HyperEVM block ~1s).
     /// @dev    Uses `vm.rpc` to query L1Read precompiles directly via JSON-RPC. Non-view since
     ///         `vm.rpc` is non-view in forge-std. Still purely read-only semantically.
-    function verifyActivateMarket(string memory configPath, string memory label) external {
-        string memory config = vm.readFile(configPath);
-        DeployHelpers.labelDeployed(config);
-        _requireMarket(config, label);
+    function verifyActivateMarket(string memory marketConfigPath, string memory globalConfigPath) external {
+        (string memory marketConfig, string memory globalConfig,) =
+            DeployHelpers.preflightMarketConfig(marketConfigPath, globalConfigPath);
+        DeployHelpers.labelDeployed(globalConfig);
 
         console.log("================ verifyActivateMarket ================");
-        console.log("label:", label);
 
-        IEXFactory f = IEXFactory(config.readDeployedAddress("EXFactory"));
-        string memory base = DeployHelpers.marketPath(label);
-        bytes32 marketId = config.readBytes32(string.concat(base, ".deployed.marketId"));
+        IEXFactory f = IEXFactory(globalConfig.readDeployedAddress("EXFactory"));
+        bytes32 marketId = marketConfig.readBytes32(".deployed.marketId");
         require(marketId != bytes32(0), "verify: JSON marketId is zero (run verifyDeployMarket first)");
 
         IEXFactory.MarketContracts memory mc = f.getMarketContracts(marketId);
-        uint64 usdcTokenId = uint64(config.readUint(string.concat(base, ".activation.tokenId")));
-        address l1Read = config.readAddress(".hyperliquid.l1Read");
+        uint64 usdcTokenId = uint64(marketConfig.readUint(".core.registerAsset.schema.collateralToken"));
+        address l1Read = globalConfig.readAddress(".hyperliquid.l1Read");
 
         // ---- HC-side coreUserExists for the 3 activation targets ----
         require(_coreUserExistsRPC(l1Read, mc.router), "verify: Router not HC-active");
@@ -361,29 +347,28 @@ contract VerifyFirstMarket is Script {
     ///         pre-processL1Operations (`undelegated == opBond, delegated == 0`) and post-
     ///         processL1Operations (`undelegated == 0, delegated == opBond`) states — both are
     ///         valid bondMarket-passed states.
-    function verifyBondMarket(string memory configPath, string memory label) external {
-        string memory config = vm.readFile(configPath);
-        DeployHelpers.labelDeployed(config);
-        _requireMarket(config, label);
+    function verifyBondMarket(string memory marketConfigPath, string memory globalConfigPath) external {
+        (string memory marketConfig, string memory globalConfig,) =
+            DeployHelpers.preflightMarketConfig(marketConfigPath, globalConfigPath);
+        DeployHelpers.labelDeployed(globalConfig);
 
         console.log("================ verifyBondMarket ================");
-        console.log("label:", label);
 
-        IEXFactory f = IEXFactory(config.readDeployedAddress("EXFactory"));
-        string memory base = DeployHelpers.marketPath(label);
-        bytes32 marketId = config.readBytes32(string.concat(base, ".deployed.marketId"));
+        IEXFactory f = IEXFactory(globalConfig.readDeployedAddress("EXFactory"));
+        bytes32 marketId = marketConfig.readBytes32(".deployed.marketId");
         require(marketId != bytes32(0), "verify: JSON marketId is zero");
 
         IEXFactory.MarketContracts memory mc = f.getMarketContracts(marketId);
         IEXFactory.MarketInfo memory info = f.getMarket(marketId);
-        uint256 opBondParam = config.readUint(string.concat(base, ".params.opBond"));
+        IEXFactory.MarketParams memory params = DeployHelpers.buildMarketParams(marketConfig, globalConfig);
+        uint256 opBondParam = params.opBond;
 
         // ---- Factory MarketInfo ----
         require(info.bonded, "verify: MarketInfo.bonded should be true");
         require(info.opBondEscrowed == 0, "verify: MarketInfo.opBondEscrowed should be 0 (escrow moved out)");
 
         // ---- JSON ----
-        require(config.readBool(string.concat(base, ".deployed.bonded")), "verify: JSON .bonded should be true");
+        require(marketConfig.readBool(".deployed.bonded"), "verify: JSON .bonded should be true");
 
         // ---- EXManager state ----
         IEXManager exMgr = IEXManager(mc.exManager);
@@ -403,7 +388,7 @@ contract VerifyFirstMarket is Script {
         require(IStakingManager(mc.router).totalStaked() == opBondParam, "verify: Router.totalStaked != params.opBond");
 
         // ---- HC Router delegator summary (via vm.rpc) ----
-        address l1Read = config.readAddress(".hyperliquid.l1Read");
+        address l1Read = globalConfig.readAddress(".hyperliquid.l1Read");
         IL1Read.DelegatorSummary memory ds = _delegatorSummaryRPC(l1Read, mc.router);
         uint256 expectedTotal8 = opBondParam / 1e10; // 18-decimal HYPE -> 8-decimal HC representation
         // Accept pre- or post-processL1Operations state. Use `>=` to tolerate validator-reward
@@ -432,23 +417,21 @@ contract VerifyFirstMarket is Script {
     /* ========== PHASE 4: verifyCancelMarket ========== */
 
     /// @notice Asserts factory registry cleanup after `factory.cancelMarket(marketId, recipient)` lands.
-    function verifyCancelMarket(string memory configPath, string memory label) external {
-        string memory config = vm.readFile(configPath);
-        DeployHelpers.labelDeployed(config);
-        _requireMarket(config, label);
+    function verifyCancelMarket(string memory marketConfigPath, string memory globalConfigPath) external {
+        (string memory marketConfig, string memory globalConfig,) =
+            DeployHelpers.preflightMarketConfig(marketConfigPath, globalConfigPath);
+        DeployHelpers.labelDeployed(globalConfig);
 
         console.log("================ verifyCancelMarket ================");
-        console.log("label:", label);
 
-        IEXFactory f = IEXFactory(config.readDeployedAddress("EXFactory"));
-        string memory base = DeployHelpers.marketPath(label);
-        bytes32 marketId = config.readBytes32(string.concat(base, ".deployed.marketId"));
-        address exManagerJson = config.readAddress(string.concat(base, ".deployed.exManager"));
+        IEXFactory f = IEXFactory(globalConfig.readDeployedAddress("EXFactory"));
+        bytes32 marketId = marketConfig.readBytes32(".deployed.marketId");
+        address exManagerJson = marketConfig.readAddress(".deployed.exManager");
         require(marketId != bytes32(0), "verify: JSON marketId is zero");
         require(exManagerJson != address(0), "verify: JSON exManager is zero");
 
         // ---- JSON ----
-        require(config.readBool(string.concat(base, ".deployed.cancelled")), "verify: JSON .cancelled should be true");
+        require(marketConfig.readBool(".deployed.cancelled"), "verify: JSON .cancelled should be true");
 
         // ---- Factory registry cleared ----
         IEXFactory.MarketInfo memory info = f.getMarket(marketId);
@@ -459,7 +442,7 @@ contract VerifyFirstMarket is Script {
         require(!f.isMarket(exManagerJson), "verify: factory.isMarket(exManager) should be false");
 
         // ---- Recipient address must be non-zero ----
-        address recipient = config.readAddress(string.concat(base, ".cancelRecipient"));
+        address recipient = marketConfig.readAddress(".cancelRecipient");
         require(recipient != address(0), "verify: cancelRecipient is zero");
 
         console.log("[verifyCancelMarket] PASSED");
@@ -467,10 +450,6 @@ contract VerifyFirstMarket is Script {
     }
 
     /* ========== HELPERS ========== */
-
-    function _requireMarket(string memory config, string memory label) internal view {
-        require(config.hasMarket(label), string.concat("verify: no market entry with label '", label, "' in .markets"));
-    }
 
     /// @dev `vm.rpc("eth_call", params)` returns the raw return data from a remote eth_call,
     ///      bypassing forge's local EVM. Critical for L1Read precompile queries since the
@@ -481,10 +460,10 @@ contract VerifyFirstMarket is Script {
         return vm.rpc("eth_call", params);
     }
 
-    /// @dev Calls the L1Read **wrapper contract** (`.hyperliquid.l1Read` from config — a Solidity
-    ///      contract that internally translates selector-style ABI calls into the raw-encoded
-    ///      format the underlying precompile expects). Calling the raw precompile (0x0810) with
-    ///      a selector-prefixed payload returns PrecompileError.
+    /// @dev Calls the L1Read **wrapper contract** (`.hyperliquid.l1Read` from globalConfig — a
+    ///      Solidity contract that internally translates selector-style ABI calls into the
+    ///      raw-encoded format the underlying precompile expects). Calling the raw precompile
+    ///      (0x0810) with a selector-prefixed payload returns PrecompileError.
     function _coreUserExistsRPC(address l1Read, address user) internal returns (bool) {
         bytes memory cd = abi.encodeWithSelector(IL1Read.coreUserExists.selector, user);
         bytes memory ret = _ethCallRPC(l1Read, cd);

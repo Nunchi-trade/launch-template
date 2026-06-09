@@ -18,38 +18,34 @@ import {PrecompileStubs} from "./lib/PrecompileStubs.sol";
 /// @title DeployFirstMarket
 /// @notice Per-market lifecycle: deployMarket → activateMarket → bondMarket → (optional) cancelMarket.
 ///         Each phase is its own external entry — HyperCore must confirm the activation token bridge
-///         before `bondMarket` can land, and that confirmation is off-chain. The operator runs the
-///         entries with a wait in between.
+///         before `bondMarket` can land, and that confirmation is off-chain. The deployer runs the
+///         phases sequentially with a wait between activate and bond.
 ///
-/// @notice All phases take `(configPath, label)` — `label` selects the market entry under the JSON
-///         `markets` object (keyed by label). Lets one config track multiple markets concurrently
-///         (e.g., a bonded `firstMarket`, a `cancelTest`, a `secondMarket`, etc.). Keyed object
-///         instead of array because forge `vm.writeJson` only supports dot-separated object key
-///         paths — array-index syntax like `.markets[i]` doesn't work.
+/// @notice Every phase takes `(marketConfigPath, globalConfigPath)`. The marketConfig is the
+///         deployer's per-market intake file (`TEMPLATE.json` is the seed they copy + fill in).
+///         The globalConfig is the per-network protocol singleton + pinned-defaults file; pass `""`
+///         for `globalConfigPath` to auto-resolve from the marketConfig's `network.name`
+///         (defaults to `script/config/globals/<networkName>.json`), or pass an explicit path to
+///         override (custom globalConfig for forks, alternate deployments, etc.).
 ///
 /// @dev    Usage:
 ///         forge script script/DeployFirstMarket.s.sol:DeployFirstMarket \
-///           --sig 'deployMarket(string,string)' $CONFIG_JSON firstMarket \
+///           --sig 'deployMarket(string,string)' "$MARKET_CONFIG_JSON" "$GLOBAL_CONFIG_JSON" \
 ///           --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast
-///
-///         # then activateMarket / bondMarket / cancelMarket against the same label.
 contract DeployFirstMarket is Script {
     using stdJson for string;
     using DeployHelpers for string;
 
     /* ========== PHASE 1: deployMarket ========== */
 
-    function deployMarket(string memory configPath, string memory label) public {
+    function deployMarket(string memory marketConfigPath, string memory globalConfigPath) public {
         PrecompileStubs.etchAll();
-        string memory config = vm.readFile(configPath);
-        DeployHelpers.labelDeployed(config);
-        require(
-            config.hasMarket(label),
-            string.concat("DeployFirstMarket: no market entry with label '", label, "' in .markets")
-        );
+        (string memory marketConfig, string memory globalConfig,) =
+            DeployHelpers.preflightMarketConfig(marketConfigPath, globalConfigPath);
+        DeployHelpers.labelDeployed(globalConfig);
 
-        IEXFactory f = IEXFactory(config.readDeployedAddress("EXFactory"));
-        IEXFactory.MarketParams memory params = _buildMarketParams(config, label);
+        IEXFactory f = IEXFactory(globalConfig.readDeployedAddress("EXFactory"));
+        IEXFactory.MarketParams memory params = _buildMarketParams(marketConfig, globalConfig);
 
         _preFlightAssertsForDeploy(f, params);
 
@@ -57,70 +53,67 @@ contract DeployFirstMarket is Script {
         (bytes32 marketId, address exManager) = f.deployMarket{value: params.opBond}(params);
         vm.stopBroadcast();
 
-        string memory base = DeployHelpers.marketPath(label);
-        DeployHelpers.writeJsonBytes32(configPath, string.concat(base, ".deployed.marketId"), marketId);
-        DeployHelpers.writeJsonAddress(configPath, string.concat(base, ".deployed.exManager"), exManager);
-        // Reset bonded + cancelled when a new market is deployed to a label slot — protects against
-        // stale state from a previously-bonded or previously-cancelled market under the same label.
-        DeployHelpers.writeJsonBool(configPath, string.concat(base, ".deployed.bonded"), false);
-        DeployHelpers.writeJsonBool(configPath, string.concat(base, ".deployed.cancelled"), false);
+        DeployHelpers.writeJsonBytes32(marketConfigPath, ".deployed.marketId", marketId);
+        DeployHelpers.writeJsonAddress(marketConfigPath, ".deployed.exManager", exManager);
+        // Reset bonded + cancelled when a new market is deployed — protects against stale state
+        // from a previously-bonded or previously-cancelled market reusing the same marketConfig.
+        DeployHelpers.writeJsonBool(marketConfigPath, ".deployed.bonded", false);
+        DeployHelpers.writeJsonBool(marketConfigPath, ".deployed.cancelled", false);
 
-        console.log("[deployMarket] label:", label);
         console.log("[deployMarket] marketId:", vm.toString(marketId));
         console.log("[deployMarket] exManager:", exManager);
         console.log("[deployMarket] opBond escrowed:", params.opBond);
-        console.log("Next: activateMarket(<configPath>, <label>) once you have the activation token approved + funded.");
+        console.log("Next: activateMarket(<marketConfig>, <globalConfig>) once activation token approved + funded.");
     }
 
     /* ========== PHASE 2: activateMarket ========== */
 
-    function activateMarket(string memory configPath, string memory label) public {
+    function activateMarket(string memory marketConfigPath, string memory globalConfigPath) public {
         PrecompileStubs.etchAll();
-        string memory config = vm.readFile(configPath);
-        DeployHelpers.labelDeployed(config);
-        require(
-            config.hasMarket(label),
-            string.concat("DeployFirstMarket: no market entry with label '", label, "' in .markets")
-        );
-        string memory base = DeployHelpers.marketPath(label);
+        (string memory marketConfig, string memory globalConfig,) =
+            DeployHelpers.preflightMarketConfig(marketConfigPath, globalConfigPath);
+        DeployHelpers.labelDeployed(globalConfig);
 
-        IEXFactory f = IEXFactory(config.readDeployedAddress("EXFactory"));
-        bytes32 marketId = config.readBytes32(string.concat(base, ".deployed.marketId"));
+        IEXFactory f = IEXFactory(globalConfig.readDeployedAddress("EXFactory"));
+        bytes32 marketId = marketConfig.readBytes32(".deployed.marketId");
         require(marketId != bytes32(0), "DeployFirstMarket: market not deployed");
 
-        uint32 tokenId = uint32(config.readUint(string.concat(base, ".activation.tokenId")));
-        uint256 amount = config.readUint(string.concat(base, ".activation.amount"));
-        require(amount > 0, "DeployFirstMarket: activation amount == 0");
+        // Activation token = the HC perp dex's collateral token (deployer-chosen in the core block).
+        uint32 tokenId = uint32(marketConfig.readUint(".core.registerAsset.schema.collateralToken"));
 
         IGlobalConfig gc = f.globalConfig();
-        require(gc.isActivationToken(tokenId), "DeployFirstMarket: tokenId not registered as activation token");
-        (,,, address token,,,) = gc.activationTokens(tokenId);
+        require(gc.isActivationToken(tokenId), "DeployFirstMarket: collateralToken not registered as activation token");
+        (,,, address token, uint8 decimals,,) = gc.activationTokens(tokenId);
+
+        // Amount = totalRequired (whole tokens, summed across the 3 activation targets) scaled by
+        // the token's decimals. Deployer must hold + approve this floor; over-funding (a custom
+        // amount) is intentionally unsupported via this script to keep the deployer flow simple.
+        (,, uint256 totalRequired) = f.activationTargets(marketId);
+        uint256 amount = totalRequired * (10 ** uint256(decimals));
+        require(
+            IERC20(token).balanceOf(msg.sender) >= amount, "DeployFirstMarket: deployer balance < activation minimum"
+        );
 
         vm.startBroadcast();
         IERC20(token).approve(address(f), amount);
         f.activateMarket(marketId, tokenId, amount);
         vm.stopBroadcast();
 
-        console.log("[activateMarket] label:", label);
         console.log("[activateMarket] bridged", amount, "of token", token);
         console.log("[activateMarket] tokenId:", tokenId);
-        console.log("Next: bondMarket(<configPath>, <label>) once HyperCore credits the Router's L1 spot balance.");
+        console.log("Next: bondMarket(<marketConfig>, <globalConfig>) once HyperCore credits the Router's L1 spot.");
     }
 
     /* ========== PHASE 3: bondMarket ========== */
 
-    function bondMarket(string memory configPath, string memory label) public {
+    function bondMarket(string memory marketConfigPath, string memory globalConfigPath) public {
         PrecompileStubs.etchAll();
-        string memory config = vm.readFile(configPath);
-        DeployHelpers.labelDeployed(config);
-        require(
-            config.hasMarket(label),
-            string.concat("DeployFirstMarket: no market entry with label '", label, "' in .markets")
-        );
-        string memory base = DeployHelpers.marketPath(label);
+        (string memory marketConfig, string memory globalConfig,) =
+            DeployHelpers.preflightMarketConfig(marketConfigPath, globalConfigPath);
+        DeployHelpers.labelDeployed(globalConfig);
 
-        IEXFactory f = IEXFactory(config.readDeployedAddress("EXFactory"));
-        bytes32 marketId = config.readBytes32(string.concat(base, ".deployed.marketId"));
+        IEXFactory f = IEXFactory(globalConfig.readDeployedAddress("EXFactory"));
+        bytes32 marketId = marketConfig.readBytes32(".deployed.marketId");
         require(marketId != bytes32(0), "DeployFirstMarket: market not deployed");
 
         IEXFactory.MarketContracts memory mc = f.getMarketContracts(marketId);
@@ -135,37 +128,31 @@ contract DeployFirstMarket is Script {
         f.bondMarket(marketId);
         vm.stopBroadcast();
 
-        DeployHelpers.writeJsonBool(configPath, string.concat(base, ".deployed.bonded"), true);
-        console.log("[bondMarket] label:", label);
+        DeployHelpers.writeJsonBool(marketConfigPath, ".deployed.bonded", true);
         console.log("[bondMarket] market bonded, transitioned to FUNDING");
         console.log("[bondMarket] exManager:", mc.exManager);
     }
 
     /* ========== PHASE 4: cancelMarket ========== */
 
-    /// @notice Aborts a pre-bond market and refunds `opBondEscrowed` to the configured recipient.
-    /// @dev    Pre-flight asserts `bonded=false` and `block.timestamp >= cancelEligibleAt`. The
-    ///         `cancelEligibleAt` timer is snapshotted at deployMarket time (= deploy block
-    ///         timestamp + globalConfig.unwindDelay()) — for the dry-run, set unwindDelay to the
-    ///         protocol floor (1 day) before deploying so the cancel completes in <2 days.
-    function cancelMarket(string memory configPath, string memory label) public {
+    /// @notice Aborts a pre-bond market and refunds `opBondEscrowed` to `.cancelRecipient`
+    ///         (defaults to `msg.sender` when unset). Pre-flight asserts `bonded == false`
+    ///         and `block.timestamp >= cancelEligibleAt`. The `cancelEligibleAt` timer is
+    ///         snapshotted at deployMarket time (= deploy block timestamp +
+    ///         `globalConfig.unwindDelay()`).
+    function cancelMarket(string memory marketConfigPath, string memory globalConfigPath) public {
         PrecompileStubs.etchAll();
-        string memory config = vm.readFile(configPath);
-        DeployHelpers.labelDeployed(config);
-        require(
-            config.hasMarket(label),
-            string.concat("DeployFirstMarket: no market entry with label '", label, "' in .markets")
-        );
-        string memory base = DeployHelpers.marketPath(label);
+        (string memory marketConfig, string memory globalConfig,) =
+            DeployHelpers.preflightMarketConfig(marketConfigPath, globalConfigPath);
+        DeployHelpers.labelDeployed(globalConfig);
 
-        IEXFactory f = IEXFactory(config.readDeployedAddress("EXFactory"));
-        bytes32 marketId = config.readBytes32(string.concat(base, ".deployed.marketId"));
+        IEXFactory f = IEXFactory(globalConfig.readDeployedAddress("EXFactory"));
+        bytes32 marketId = marketConfig.readBytes32(".deployed.marketId");
         require(marketId != bytes32(0), "DeployFirstMarket: market not deployed");
 
-        address recipient = DeployHelpers.readOptionalAddress(config, string.concat(base, ".cancelRecipient"));
+        address recipient = DeployHelpers.readOptionalAddress(marketConfig, ".cancelRecipient");
         if (recipient == address(0)) recipient = msg.sender;
 
-        // Pre-flight: market exists, not bonded, eligible timer elapsed
         IEXFactory.MarketInfo memory info = f.getMarket(marketId);
         require(info.exManager != address(0), "DeployFirstMarket: market not found in factory");
         require(!info.bonded, "DeployFirstMarket: market is bonded, cannot cancel");
@@ -177,10 +164,9 @@ contract DeployFirstMarket is Script {
         f.cancelMarket(marketId, recipient);
         vm.stopBroadcast();
 
-        DeployHelpers.writeJsonBool(configPath, string.concat(base, ".deployed.cancelled"), true);
+        DeployHelpers.writeJsonBool(marketConfigPath, ".deployed.cancelled", true);
 
         uint256 refund = recipient.balance - recipientBalBefore;
-        console.log("[cancelMarket] label:", label);
         console.log("[cancelMarket] recipient:", recipient);
         console.log("[cancelMarket] refunded wei:", refund);
         console.log("[cancelMarket] expected (opBondEscrowed):", info.opBondEscrowed);
@@ -188,36 +174,24 @@ contract DeployFirstMarket is Script {
 
     /* ========== HELPERS ========== */
 
-    /// @dev Constructs `MarketParams` from the JSON config. Marked `virtual` so end-clients
-    ///      forking this script can override to constrain / pre-validate inputs (e.g., enforce
-    ///      tighter buybackBps caps, restrict admin/operator/enclaver to a fixed scheme, swap
-    ///      to a non-JSON source, etc.). Override must remain `pure` per Solidity mutability
-    ///      narrowing rules.
-    function _buildMarketParams(string memory config, string memory label)
+    /// @dev Constructs `MarketParams` by merging the deployer's marketConfig with the
+    ///      globalConfig's pinned defaults. Marked `virtual` so end-clients forking this
+    ///      script can override to constrain / pre-validate inputs (tighter buybackBps
+    ///      caps, restricted role schemes, non-JSON sources, etc.). Override must remain
+    ///      `view` per Solidity mutability narrowing rules.
+    function _buildMarketParams(string memory marketConfig, string memory globalConfig)
         internal
-        pure
+        view
         virtual
-        returns (IEXFactory.MarketParams memory p)
+        returns (IEXFactory.MarketParams memory)
     {
-        string memory pp = string.concat(DeployHelpers.marketPath(label), ".params");
-        p.admin = config.readAddress(string.concat(pp, ".admin"));
-        p.operator = config.readAddress(string.concat(pp, ".operator"));
-        p.enclaver = config.readAddress(string.concat(pp, ".enclaver"));
-        p.opBond = config.readUint(string.concat(pp, ".opBond"));
-        p.validator = config.readAddress(string.concat(pp, ".validator"));
-        p.gate = config.readAddress(string.concat(pp, ".gate"));
-        p.lstName = config.readString(string.concat(pp, ".lstName"));
-        p.lstSymbol = config.readString(string.concat(pp, ".lstSymbol"));
-        p.marketTier = config.readUint(string.concat(pp, ".marketTier"));
-        p.hyperCoreDeployer = config.readAddress(string.concat(pp, ".hyperCoreDeployer"));
-        p.deployerTreasury = config.readAddress(string.concat(pp, ".deployerTreasury"));
-        p.buybackBps = uint64(config.readUint(string.concat(pp, ".buybackBps")));
+        return DeployHelpers.buildMarketParams(marketConfig, globalConfig);
     }
 
-    /// @dev Mirrors the factory's own `deployMarket` validations — fail fast in the script before
-    ///      we send the opBond. Distinctness asserts (admin!=operator etc.) intentionally omitted
-    ///      because the source contracts don't enforce them and operators may collapse roles to a
-    ///      single EOA during dry-runs.
+    /// @dev Mirrors the factory's own `deployMarket` validations — fail fast in the script
+    ///      before we send the opBond. Distinctness asserts (admin!=operator etc.) omitted
+    ///      because the source contracts don't enforce them and deployers may collapse
+    ///      roles to a single EOA during dry-runs.
     function _preFlightAssertsForDeploy(IEXFactory f, IEXFactory.MarketParams memory p) internal view {
         require(p.admin != address(0), "params.admin == 0");
         require(p.operator != address(0), "params.operator == 0");

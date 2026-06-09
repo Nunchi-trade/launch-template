@@ -166,3 +166,8 @@ those rot.
 - Some `MarketParams` fields (`enclaver`, `marketTier`, others) are planned to
   be pinned inside the scripts in future commits to simplify the deployer-facing
   template. When that lands, keep `WALKTHROUGH.md` / `TEMPLATE.json` in sync.
+- **Commit messages stay succinct.** This repo is public-facing — keep messages
+  to `type: one-line description`, with bullets only when essential. Don't
+  enumerate what was removed, don't reference protocol-repo internals, don't
+  describe roadmap or "future work" in commit bodies. The diff already shows
+  what changed; messages describe intent, not history.

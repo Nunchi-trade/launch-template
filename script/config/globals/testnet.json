@@ -41,33 +41,7 @@
     }
   },
   "markets": {
-    "firstMarket": {
-      "deployer": "0x798b026878603494176eDb7aEa2c23935A6b166f",
-      "cancelRecipient": "0x798b026878603494176eDb7aEa2c23935A6b166f",
-      "params": {
-        "admin": "0x798b026878603494176eDb7aEa2c23935A6b166f",
-        "operator": "0x811b8DD771713d9C8f065909F657554417F3DB91",
-        "enclaver": "0x798b026878603494176eDb7aEa2c23935A6b166f",
-        "opBond": "10000000000000000000",
-        "validator": "0x946bF3135c7D15E4462b510f74B6e304AABb5B21",
-        "gate": "0x0000000000000000000000000000000000000000",
-        "lstName": "Kinetiq Testnet LST",
-        "lstSymbol": "kmHYPEtest",
-        "marketTier": 1,
-        "hyperCoreDeployer": "0x798b026878603494176eDb7aEa2c23935A6b166f",
-        "deployerTreasury": "0x811b8DD771713d9C8f065909F657554417F3DB91",
-        "buybackBps": 7000
-      },
-      "activation": {
-        "tokenId": 0,
-        "amount": "9600000"
-      },
-      "deployed": {
-        "marketId": "0xe242e2577be4fa18116ad8b9ffae932ab6f8cc021017fec78bcb0fe44f696bb1",
-        "exManager": "0xb5cAe7C9c1028f4550AD718B628960b36B182eb2",
-        "bonded": true,
-        "cancelled": false
-      }
-    }
+    "enclaver": "0x798b026878603494176eDb7aEa2c23935A6b166f",
+    "marketTier": 1
   }
 }

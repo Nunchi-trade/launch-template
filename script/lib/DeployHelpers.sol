@@ -12,6 +12,8 @@ import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.s
 
 import {MinimalImplementation} from "@kinetiq/lst/src/lib/MinimalImplementation.sol";
 
+import {IEXFactory} from "@kinetiq/launch/src/interfaces/IEXFactory.sol";
+
 /// @title DeployHelpers
 /// @notice Internal-only library used by DeployCore / DeployFirstMarket / SmokeTest. Wraps the
 ///         common forge-script idioms — TUP deployment via CREATE2 with config-keyed salt,
@@ -23,6 +25,22 @@ library DeployHelpers {
     using stdJson for string;
 
     Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+
+    /// @notice Raised by `networkNameToChainId` when the deployer's marketConfig
+    ///         names a network this script has no chainId mapping for.
+    error UnknownNetwork(string name);
+
+    /// @notice Raised when the marketConfig's `network.chainId` value does not
+    ///         match what `networkNameToChainId(network.name)` resolves to.
+    error NetworkChainIdMismatch(string name, uint256 expected, uint256 claimed);
+
+    /// @notice Raised when the RPC's `block.chainid` does not match the marketConfig's
+    ///         `network.chainId`. Catches running a marketConfig against the wrong RPC.
+    error RpcChainIdMismatch(uint256 rpcChainId, uint256 marketConfigChainId);
+
+    /// @notice Raised by `buildMarketParams` when a MarketParams field is absent from
+    ///         both the deployer's marketConfig and the resolved globalConfig.
+    error MissingMarketParam(string field);
 
     /// @notice Deploys a TUP pointing at the caller-supplied `minimalImpl` so the proxy address can
     ///         be pinned before its real implementation is known. The proxy's auto-created
@@ -143,6 +161,114 @@ library DeployHelpers {
 
     function writeJsonBool(string memory configPath, string memory key, bool value) internal {
         vm.writeJson(value ? "true" : "false", configPath, key);
+    }
+
+    /* ========== MARKET CONFIG + NETWORK ========== */
+
+    /// @notice Maps a network name (as stored under `.network.name` in the deployer's
+    ///         marketConfig) to its expected EVM chain id. Reverts `UnknownNetwork(name)`
+    ///         when the name is not in the static mapping.
+    function networkNameToChainId(string memory name) internal pure returns (uint256) {
+        bytes32 nameHash = keccak256(bytes(name));
+        if (nameHash == keccak256("mainnet")) return 999;
+        if (nameHash == keccak256("mainnet-dryrun")) return 999;
+        if (nameHash == keccak256("testnet")) return 998;
+        if (nameHash == keccak256("local")) return 31337;
+        revert UnknownNetwork(name);
+    }
+
+    /// @notice Pre-flights a deployer's marketConfig + resolves the matching globalConfig.
+    ///         Asserts (1) the marketConfig's claimed chainId matches the static mapping
+    ///         for its network name, and (2) the RPC's `block.chainid` matches the
+    ///         marketConfig's chainId. Returns the loaded JSON strings + the resolved
+    ///         network name for downstream callers.
+    /// @dev    `globalConfigPath` is optional: pass an empty string to use the network-
+    ///         derived default (`script/config/globals/<networkName>.json`); pass an
+    ///         explicit path to override. The override knob lets a deployer point at a
+    ///         custom globalConfig (fork tests, alternate deployments, etc.) without
+    ///         forking the script.
+    /// @return marketConfigJson  Contents of `marketConfigPath` (read once).
+    /// @return globalConfigJson  Contents of the resolved globalConfig path.
+    /// @return networkName       The network name extracted from the marketConfig.
+    function preflightMarketConfig(string memory marketConfigPath, string memory globalConfigPath)
+        internal
+        returns (string memory marketConfigJson, string memory globalConfigJson, string memory networkName)
+    {
+        marketConfigJson = vm.readFile(marketConfigPath);
+        networkName = marketConfigJson.readString(".network.name");
+        uint256 marketConfigChainId = marketConfigJson.readUint(".network.chainId");
+        uint256 expectedChainId = networkNameToChainId(networkName);
+        if (marketConfigChainId != expectedChainId) {
+            revert NetworkChainIdMismatch(networkName, expectedChainId, marketConfigChainId);
+        }
+        if (block.chainid != marketConfigChainId) {
+            revert RpcChainIdMismatch(block.chainid, marketConfigChainId);
+        }
+        if (bytes(globalConfigPath).length == 0) {
+            globalConfigPath = string.concat("script/config/globals/", networkName, ".json");
+        }
+        globalConfigJson = vm.readFile(globalConfigPath);
+    }
+
+    /// @notice Builds a MarketParams struct by reading each field from the deployer's
+    ///         marketConfig first (under `.evm.marketParams.<field>`); falls back to the
+    ///         globalConfig (under `.markets.<field>`) for any field the deployer didn't
+    ///         supply. Reverts `MissingMarketParam(field)` if a field is absent from both.
+    /// @dev    The deployer-vs-pinned split is driven entirely by what's present in the
+    ///         deployer's marketConfig — no hardcoded field categories in this helper.
+    function buildMarketParams(string memory marketConfigJson, string memory globalConfigJson)
+        internal
+        view
+        returns (IEXFactory.MarketParams memory p)
+    {
+        p.admin = _resolveAddressField(marketConfigJson, globalConfigJson, "admin");
+        p.operator = _resolveAddressField(marketConfigJson, globalConfigJson, "operator");
+        p.enclaver = _resolveAddressField(marketConfigJson, globalConfigJson, "enclaver");
+        p.opBond = _resolveUintField(marketConfigJson, globalConfigJson, "opBond");
+        p.validator = _resolveAddressField(marketConfigJson, globalConfigJson, "validator");
+        p.gate = _resolveAddressField(marketConfigJson, globalConfigJson, "gate");
+        p.lstName = _resolveStringField(marketConfigJson, globalConfigJson, "lstName");
+        p.lstSymbol = _resolveStringField(marketConfigJson, globalConfigJson, "lstSymbol");
+        p.marketTier = _resolveUintField(marketConfigJson, globalConfigJson, "marketTier");
+        p.hyperCoreDeployer = _resolveAddressField(marketConfigJson, globalConfigJson, "hyperCoreDeployer");
+        p.deployerTreasury = _resolveAddressField(marketConfigJson, globalConfigJson, "deployerTreasury");
+        p.buybackBps = uint64(_resolveUintField(marketConfigJson, globalConfigJson, "buybackBps"));
+    }
+
+    function _resolveAddressField(string memory marketConfig, string memory globalConfig, string memory field)
+        private
+        view
+        returns (address)
+    {
+        string memory mp = string.concat(".evm.marketParams.", field);
+        if (marketConfig.keyExists(mp)) return marketConfig.readAddress(mp);
+        string memory gp = string.concat(".markets.", field);
+        if (globalConfig.keyExists(gp)) return globalConfig.readAddress(gp);
+        revert MissingMarketParam(field);
+    }
+
+    function _resolveUintField(string memory marketConfig, string memory globalConfig, string memory field)
+        private
+        view
+        returns (uint256)
+    {
+        string memory mp = string.concat(".evm.marketParams.", field);
+        if (marketConfig.keyExists(mp)) return marketConfig.readUint(mp);
+        string memory gp = string.concat(".markets.", field);
+        if (globalConfig.keyExists(gp)) return globalConfig.readUint(gp);
+        revert MissingMarketParam(field);
+    }
+
+    function _resolveStringField(string memory marketConfig, string memory globalConfig, string memory field)
+        private
+        view
+        returns (string memory)
+    {
+        string memory mp = string.concat(".evm.marketParams.", field);
+        if (marketConfig.keyExists(mp)) return marketConfig.readString(mp);
+        string memory gp = string.concat(".markets.", field);
+        if (globalConfig.keyExists(gp)) return globalConfig.readString(gp);
+        revert MissingMarketParam(field);
     }
 
     /* ========== TRACE LABELING ========== */
