@@ -166,16 +166,9 @@ graph LR
         MARKET_OP[Market Operator<br/>OPERATOR_ROLE on EXManager]
         WALLET_ROLE_HOLDER[Enclaver<br/>WALLET_ROLE on EXManager]
     end
-    subgraph "Gates (per market)"
-        GATE_ADMIN[Gate DEFAULT_ADMIN]
-        GATE_MGR[Gate MANAGER_ROLE]
-        WHITELISTER[Whitelister<br/>EIP712 signer]
-    end
     FACTORY -->|transferAdmin / transferOperator / transferEnclaver| MARKET_ADMIN
     FACTORY -->|transferOperator| MARKET_OP
     FACTORY -->|transferEnclaver| WALLET_ROLE_HOLDER
-    GATE_ADMIN -->|role-admin| GATE_MGR
-    GATE_MGR -->|setWhitelister| WHITELISTER
 ```
 
 > Kinetiq retains a separate stack of protocol-side roles (admin, manager, operator, treasury, recovery) for upgrades, oracle reporting, L1 ops, fee splitting, and recovery. These roles are exercised by Kinetiq through the `ProtocolRolesController` singleton and do not directly affect deployer / operator / depositor flows.
@@ -522,37 +515,7 @@ function onDeposit(EXPhase, sender, recipient, tokenIn, amountIn, sharesOut, dat
 function onWithdraw(EXPhase, sender, recipient, tokenOut, amountOut, withdrawalFee, sharesWithdrawn, blockedShares, data) external;
 ```
 
-Gate selection happens at `deployMarket` (`MarketParams.gate`); `address(0)` means no gate.
-
-### Standard gates
-
-```mermaid
-graph TB
-    EM[EXManager.deposit / withdraw]
-    NOOP[address-zero<br/>= NoOpGate<br/>pass-through]
-    MUX[MultiplexerGate<br/>routes by EXPhase]
-    WL[WhitelistGate<br/>EIP712 sigs +<br/>tiered mint caps<br/>FUNDING phase]
-    TM[TieredMintGate<br/>sKNTQ-locked allowance<br/>configurable phases]
-    COMP[CompositeGate<br/>AND-compose up to 10 sub-gates]
-    EM --> NOOP
-    EM --> MUX
-    EM --> WL
-    EM --> TM
-    EM --> COMP
-    MUX -->|phase=FUNDING| WL
-    MUX -->|phase=LIVE| TM
-    COMP -->|i| WL
-    COMP -->|i+1| TM
-```
-
-| Gate | Purpose | Key Mechanics |
-|---|---|---|
-| **MultiplexerGate** | Phase-based routing | Maps `EXPhase → IEXGate`; `address(0)` for a phase = pass-through; `setPhaseGate(phase, gate)` (MANAGER_ROLE) |
-| **WhitelistGate** | FUNDING-phase EIP712 sigs + tiered mint caps | Whitelister signs `WhitelistUserData{recipient, tier}`. Per-tier `globalMintCap` + `perUserMintCap`. Skips for `bond()` passthrough (factory-initiated, recipient = exManager, empty data, balance check). Blocks all withdrawals during FUNDING when whitelist enabled. |
-| **TieredMintGate** | Token-lock-based mint allowance | Users `lock(amount)` of `lockToken` (e.g., sKNTQ). Lock duration `MIN_LOCK_DURATION = 1 hour`, `MAX_LOCK_DURATION = 4 years`. Each new lock resets the timer (anti-incremental). Tier ladder sorted ascending by `minLockAmount` and `mintAllowance`. `mintedShares[recipient]` cumulative; reverts `MintCapExceeded` on breach. `gatedPhases` configurable. |
-| **CompositeGate** | AND-composition of ≤10 sub-gates | Iterates ordered gate list for both deposit and withdraw hooks. Empty list = pass-through. No duplicates. |
-
-All gates use an `authorizedCaller` immutable to ensure only EXManager (or a parent composing gate) can invoke `onDeposit`/`onWithdraw`.
+Gate selection happens at `deployMarket` (`MarketParams.gate`); `address(0)` means no gate (the typical choice for initial deployments).
 
 ### Gate trust model
 
@@ -872,7 +835,7 @@ IEXRouter.WithdrawalInfo[] memory pending = exRouter.userWithdrawalInfo(IEXManag
 Pre-deploy:
 
 - Acquire `opBond ≥ globalConfig.minOperatorBond()` (multiple of 1e10).
-- Acquire the activation token (ERC20 from `globalConfig.activationTokens` — e.g. USDH).
+- Acquire the activation token (ERC20 from `globalConfig.activationTokens` — e.g. USDC).
 - Pick a market admin (multisig), a market operator (EOA or multisig), and a market enclaver.
 - Pick `lstName` / `lstSymbol` (EXLST token metadata).
 - Pick `marketTier` from `globalConfig.marketTiers` and a validator from Kinetiq's approved set.
@@ -892,8 +855,8 @@ EXFactory.MarketParams memory p = EXFactory.MarketParams({
 (bytes32 mid, address exManager) = factory.deployMarket{value: 1000 ether}(p);
 
 // Approve activation token to factory
-IERC20(usdh).approve(address(factory), 1e6);
-factory.activateMarket(mid, /*tokenId*/ usdhTokenId, 1e6);
+IERC20(usdc).approve(address(factory), 1e6);
+factory.activateMarket(mid, /*tokenId*/ usdcTokenId, 1e6);
 
 // Wait for L1 to credit, then bond
 factory.bondMarket(mid);

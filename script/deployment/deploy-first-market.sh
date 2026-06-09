@@ -4,7 +4,7 @@
 #
 # Phases (run separately, one tx per phase, with off-chain HC confirmation between activate + bond):
 #   deployMarket     — escrow opBond + deploy 13-contract per-market suite
-#   activateMarket   — bridge activation token (USDC/USDH) to HC for Router + Splitter + Throttle
+#   activateMarket   — bridge activation token (USDC) to HC for Router + Splitter + Throttle
 #   bondMarket       — stake opBond → Router → HC (transitions market UNBONDED → FUNDING)
 #   cancelMarket     — abort a pre-bond market + refund opBond (requires cancelEligibleAt elapsed)
 #
