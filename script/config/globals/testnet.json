@@ -1,0 +1,73 @@
+{
+  "network": {
+    "name": "testnet",
+    "chainId": 998
+  },
+  "hyperliquid": {
+    "l1Read": "0x8d89856c32d0c9a142bb8d9e0ecb5dfeb259403c",
+    "hypeTokenId": "1105"
+  },
+  "deployed": {
+    "MinimalImplementation": "0x932f98746A826e2fc7bCe24BE05885E11453d88a",
+    "GlobalConfig": "0xeCE7dfc7825d33B8C33BAB5CaB6B0178Aa0371a6",
+    "PauserRegistry": "0x343B88f27bb9553000C215aE9F146ee6421B2aA0",
+    "FacetRegistry": "0xAb9b5eaCD8bcBA443414958cDAA9d621Aa66ad64",
+    "UpgradeableBeaconRegistry": "0x6D446056920855afCB560f42916B0f0f996fC356",
+    "EXDeployer": "0x3B6192AF370D29c3F7baC7A12334a9BF26CA49cB",
+    "EXFactory": "0xba9DBf3C09F50F301531Eb60440c14151632F9d5",
+    "ProtocolRolesController": "0x9a43406488dc72b3c6b76B5462A466F8AAdb7d24",
+    "EXRouter": "0xbE1882e3De9250e875d6ecbBf30D924f4e38036E",
+    "facets": {
+      "StakingFacet": "0x5d584E1fEB426D1071EE1C6079eE93D3FAaB4ded",
+      "AdminFacet": "0x2BFA46455A70C4b5aA84eb4659c99688Dcf7a7e3",
+      "SlashingAwareWithdrawalFacet": "0x62E258ad7019D4f01BbF3DC41fCCF476f2d025c3",
+      "L1OperationsFacet": "0x36caf2a167acdB73C6B49d43D8d970c8de91f568",
+      "WhitelistFacet": "0x7E09A6bd2E6507D077312fB408d91321D6c8Eb8B",
+      "RewardShareFacet": "0x387d8aA27813ee075FE797927A2eCE17090CCb1D",
+      "HIP3ConfigFacet": "0xb7dD44bb46B602bBBEE46e12B5CD021db29E9f6d"
+    },
+    "beaconImpls": {
+      "StakingManagerRouter": "0x0236C775ECffa8FeB04567A2a03d9918F603354F",
+      "EXManager": "0x9e96562631781e855b50F4C74e0643a27A4A3A20",
+      "EXLST": "0x275Fb800b026f4a0650CA242853C15155f45BE3e",
+      "StakingAccountant": "0xd640D54235E0B619fD4A70BEC5cFa11F4723C634",
+      "ValidatorManager": "0x061DE4e6A9BC193b239a276CF566684c7cE0b03e",
+      "OracleManager": "0xb3f9785cD32ACFa5E9DFA948e6ee67763272eC37",
+      "RewardShareTracker": "0x3fCCf373050dbB11bfdc78C22300Ce89157562d2",
+      "GhostLST": "0xD7Eefc12a850e470A84F4893Dd23fde9d9A2AA2f",
+      "BlockedWithdrawalQueue": "0x40382F1bAf2E9CC716b6cb4d7b7ca93A90DB21C4",
+      "LaunchFeeSplitter": "0x75CB28853b52975A1cbcc12EcA8FAA0962a551e4",
+      "StakeFeesThrottle": "0xf029f3AEf0234Ad80c0506A855A9A73c820a1DDb"
+    }
+  },
+  "markets": {
+    "firstMarket": {
+      "deployer": "0x798b026878603494176eDb7aEa2c23935A6b166f",
+      "cancelRecipient": "0x798b026878603494176eDb7aEa2c23935A6b166f",
+      "params": {
+        "admin": "0x798b026878603494176eDb7aEa2c23935A6b166f",
+        "operator": "0x811b8DD771713d9C8f065909F657554417F3DB91",
+        "enclaver": "0x798b026878603494176eDb7aEa2c23935A6b166f",
+        "opBond": "10000000000000000000",
+        "validator": "0x946bF3135c7D15E4462b510f74B6e304AABb5B21",
+        "gate": "0x0000000000000000000000000000000000000000",
+        "lstName": "Kinetiq Testnet LST",
+        "lstSymbol": "kmHYPEtest",
+        "marketTier": 1,
+        "hyperCoreDeployer": "0x798b026878603494176eDb7aEa2c23935A6b166f",
+        "deployerTreasury": "0x811b8DD771713d9C8f065909F657554417F3DB91",
+        "buybackBps": 7000
+      },
+      "activation": {
+        "tokenId": 0,
+        "amount": "9600000"
+      },
+      "deployed": {
+        "marketId": "0xe242e2577be4fa18116ad8b9ffae932ab6f8cc021017fec78bcb0fe44f696bb1",
+        "exManager": "0xb5cAe7C9c1028f4550AD718B628960b36B182eb2",
+        "bonded": true,
+        "cancelled": false
+      }
+    }
+  }
+}

@@ -1,18 +1,20 @@
 {
-  "smartContracts": {
-    "deployMarket": {
-      "marketParams": {
-        "admin": "0x0000000000000000000000000000000000000000",
-        "operator": "0x0000000000000000000000000000000000000000",
-        "opBond": "1000000000000000000000",
-        "validator": "0x0000000000000000000000000000000000000000",
-        "gate": "0x0000000000000000000000000000000000000000",
-        "lstName": "Example Markets LST",
-        "lstSymbol": "exHYPE",
-        "hyperCoreDeployer": "0x0000000000000000000000000000000000000000",
-        "deployerTreasury": "0x0000000000000000000000000000000000000000",
-        "buybackBps": 1000
-      }
+  "network": {
+    "name": "mainnet",
+    "chainId": 999
+  },
+  "evm": {
+    "marketParams": {
+      "admin": "0x0000000000000000000000000000000000000000",
+      "operator": "0x0000000000000000000000000000000000000000",
+      "opBond": "1000000000000000000000",
+      "validator": "0x0000000000000000000000000000000000000000",
+      "gate": "0x0000000000000000000000000000000000000000",
+      "lstName": "Example Markets LST",
+      "lstSymbol": "exHYPE",
+      "hyperCoreDeployer": "0x0000000000000000000000000000000000000000",
+      "deployerTreasury": "0x0000000000000000000000000000000000000000",
+      "buybackBps": 1000
     }
   },
   "core": {
