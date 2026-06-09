@@ -1,0 +1,44 @@
+{
+  "smartContracts": {
+    "deployMarket": {
+      "marketParams": {
+        "admin": "0x0000000000000000000000000000000000000000",
+        "operator": "0x0000000000000000000000000000000000000000",
+        "opBond": "1000000000000000000000",
+        "validator": "0x0000000000000000000000000000000000000000",
+        "gate": "0x0000000000000000000000000000000000000000",
+        "lstName": "Example Markets LST",
+        "lstSymbol": "exHYPE",
+        "hyperCoreDeployer": "0x0000000000000000000000000000000000000000",
+        "deployerTreasury": "0x0000000000000000000000000000000000000000",
+        "buybackBps": 1000
+      }
+    }
+  },
+  "core": {
+    "registerAsset": {
+      "assetRequest": {
+        "coin": "ABC",
+        "szDecimals": 2,
+        "oraclePx": "1.0",
+        "marginTableId": 1,
+        "onlyIsolated": false
+      },
+      "dex": "abc",
+      "schema": {
+        "fullName": "ABC Perp DEX",
+        "collateralToken": 0
+      }
+    },
+    "subdeployers": [
+      {
+        "variant": "registerAsset",
+        "address": "0x0000000000000000000000000000000000000000"
+      },
+      {
+        "variant": "setOracle",
+        "address": "0x0000000000000000000000000000000000000000"
+      }
+    ]
+  }
+}
