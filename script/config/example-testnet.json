@@ -45,9 +45,9 @@
     ]
   },
   "deployed": {
-    "marketId": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "exManager": "0x0000000000000000000000000000000000000000",
-    "bonded": false,
+    "marketId": "0x83258f0b10b501a633841a18e86d777780e18db7efeb3a341a28cc94c165a2bf",
+    "exManager": "0xe6851B01d786ef983A8135611002E2BF5197fe71",
+    "bonded": true,
     "cancelled": false
   }
 }

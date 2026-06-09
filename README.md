@@ -30,6 +30,11 @@ Per-market lifecycle is three on-chain phases. HyperCore must confirm the activa
 between phases, so each phase is its own command. Set the env vars once per shell session, then run
 the phases in order.
 
+**Capital required on the deployer EOA (per phase):**
+- `deployMarket` — `opBond` HYPE (whatever you set in `evm.marketParams.opBond`), sent as `msg.value` and escrowed by the factory.
+- `activateMarket` — 6 of your `core.registerAsset.schema.collateralToken` token (e.g. 6 USDC at 6 decimals). The script pulls + bridges this to HyperCore so the per-market contracts have HC accounts.
+- `bondMarket` — no additional capital. The factory forwards the escrowed `opBond` into the per-market reserve, mints `EXLST` shares 1:1 to the deployer, and transitions the market to FUNDING (depositors can now stake).
+
 ```shell
 export RPC_URL=https://...
 export PRIVATE_KEY=0x...
