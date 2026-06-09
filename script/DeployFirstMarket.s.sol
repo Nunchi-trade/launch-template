@@ -135,7 +135,7 @@ contract DeployFirstMarket is Script {
 
     /* ========== PHASE 4: cancelMarket ========== */
 
-    /// @notice Aborts a pre-bond market and refunds `opBondEscrowed` to `.cancelRecipient`
+    /// @notice Aborts a pre-bond market and refunds `opBondEscrowed` to `.evm.cancelRecipient`
     ///         (defaults to `msg.sender` when unset). Pre-flight asserts `bonded == false`
     ///         and `block.timestamp >= cancelEligibleAt`. The `cancelEligibleAt` timer is
     ///         snapshotted at deployMarket time (= deploy block timestamp +
@@ -150,7 +150,7 @@ contract DeployFirstMarket is Script {
         bytes32 marketId = marketConfig.readBytes32(".deployed.marketId");
         require(marketId != bytes32(0), "DeployFirstMarket: market not deployed");
 
-        address recipient = DeployHelpers.readOptionalAddress(marketConfig, ".cancelRecipient");
+        address recipient = DeployHelpers.readOptionalAddress(marketConfig, ".evm.cancelRecipient");
         if (recipient == address(0)) recipient = msg.sender;
 
         IEXFactory.MarketInfo memory info = f.getMarket(marketId);

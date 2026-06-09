@@ -442,7 +442,7 @@ contract VerifyFirstMarket is Script {
         require(!f.isMarket(exManagerJson), "verify: factory.isMarket(exManager) should be false");
 
         // ---- Recipient address must be non-zero ----
-        address recipient = marketConfig.readAddress(".cancelRecipient");
+        address recipient = marketConfig.readAddress(".evm.cancelRecipient");
         require(recipient != address(0), "verify: cancelRecipient is zero");
 
         console.log("[verifyCancelMarket] PASSED");

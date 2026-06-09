@@ -131,21 +131,6 @@ library DeployHelpers {
         revert("DeployHelpers: array too long (>1000)");
     }
 
-    /// @notice Returns the JSON path prefix `.markets.<label>` for a per-market lookup.
-    /// @dev    `markets` is a keyed object (not an array) in the JSON config — keyed by label —
-    ///         because forge's `vm.writeJson` only supports dot-separated object key paths
-    ///         (array-index syntax like `.markets[i]` gets interpreted as a literal key
-    ///         and `.markets.<i>` errors out as "not an object"). Reverts in the caller
-    ///         (via stdJson) if the label doesn't exist in the JSON.
-    function marketPath(string memory label) internal pure returns (string memory) {
-        return string.concat(".markets.", label);
-    }
-
-    /// @notice Returns true if `.markets.<label>` exists in the config.
-    function hasMarket(string memory config, string memory label) internal view returns (bool) {
-        return config.keyExists(marketPath(label));
-    }
-
     /* ========== JSON WRITE HELPERS ========== */
 
     /// @notice Writes a deployed address back to the config file under `.deployed.<key>`.
