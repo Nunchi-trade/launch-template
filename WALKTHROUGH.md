@@ -40,24 +40,40 @@ Your market is deployed by the launch client team through `EXFactory.deployMarke
 
 ### Deployment Configuration
 
+The deployer's market config (your filled-in copy of `TEMPLATE.json`) carries the `evm.marketParams` block that the deploy script reads. Two categories:
+
+- **Fields you set** — you fill these in under `evm.marketParams`.
+- **Fields pinned by Kinetiq** — set in `script/config/globals/<network>.json` and merged in automatically at deploy time. You don't touch these.
+
+#### Fields you set (`evm.marketParams`)
+
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `admin` | `address` | Yes | Your market admin address (typically multisig). Can transfer operator/admin/enclaver via factory functions. |
-| `operator` | `address` | Yes | Your operator address, which receives `OPERATOR_ROLE` on `EXManager`. |
-| `enclaver` | `address` | Yes | Receives `WALLET_ROLE` on `EXManager` for enclave-authorized `perpDeploy` paths. While Kinetiq will be whitegloving enclave operations, this value will be irrelevent. |
-| `opBond` | `uint256` | Yes | Operator bond amount. Must satisfy `globalConfig.minOperatorBond()`, and be provided as `msg.value` on the `deployMarkets` call. This stake will be locked until the market wind down is complete. |
-| `validator` | `address` | Yes | Your selected L1 validator address. |
-| `gate` | `address` | Optional | Optional gate contract for access policy (`address(0)` disables gate checks). |
-| `lstName` | `string` | Yes | `EXLST` token name. |
-| `lstSymbol` | `string` | Yes | `EXLST` token symbol. |
-| `marketTier` | `uint256` | Yes | 1-indexed market tier controlling `minHypeStake` and supply-cap constraints. |
-| `hyperCoreDeployer` | `address` | Yes | HyperCore-side deployer reference for linker/integration flows. |
-| `deployerTreasury` | `address` | Yes | Treasury receiving your deployer share of HIP-3 revenue. |
-| `buybackBps` | `uint64` | Yes | Buyback share in basis points, applied to remainder after protocol fee. The remaining share goes to the deployer.|
+| `admin` | `address` | Yes | The address (typically your governance multisig) that controls role transfers via the factory: `EXFactory.transferOperator` / `transferAdmin` / `transferEnclaver`. It does **not** hold the lifecycle `OPERATOR_ROLE` itself — it's the meta-authority that can rotate the operator if needed. |
+| `operator` | `address` | Yes | The address that receives `OPERATOR_ROLE` on `EXManager` and drives the market lifecycle: `fund()` (FUNDING → LAUNCHING), `launch()` (LAUNCHING → LIVE), `updateWallet()` relay, tier upgrades, voluntary `setUnwindPhase()` / `unwind()`. Can be an EOA or multisig. Day-to-day market ops happen from this address. |
+| `opBond` | `uint256` | Yes | Operator bond in wei. Must satisfy `globalConfig.minOperatorBond()` (mainnet floor `Constants.MIN_OPERATOR_BOND = 100 HYPE`, initial mainnet config 1000 HYPE) and be 1e10-aligned (because HYPE bridges at 8 decimals on HC). Sent as `msg.value` on `deployMarket`. The bond is locked until the market fully winds down; on `unwind()` finalize the bond shares sweep back to the deployer EOA. |
+| `validator` | `address` | Yes | Your chosen L1 validator for the per-market staking layer. Must be active in Kinetiq's approved validator set (the deploy script pre-flight asserts `validatorActiveState(validator) == true` and reverts otherwise). The validator earns delegation rewards which flow through the per-market reward share split. |
+| `gate` | `address` | Optional | Optional `IEXGate` contract for access control on deposits/withdrawals. Set `address(0)` for no gate (the typical initial market setup). If set, the gate's `onDeposit` / `onWithdraw` hooks fire after every action and can revert to reject. Standard gates: `WhitelistGate` (EIP712 sigs + tiered caps), `TieredMintGate` (token-lock-based allowance), `CompositeGate` (AND-compose). |
+| `lstName` | `string` | Yes | ERC20 `name()` of your per-market `EXLST` share token (e.g. `"Acme Markets Liquid Stake"`). Visible to depositors in wallets and explorers. |
+| `lstSymbol` | `string` | Yes | ERC20 `symbol()` of your `EXLST` token (e.g. `"amHYPE"`). Convention: market-prefix + `HYPE`. |
+| `hyperCoreDeployer` | `address` | Yes | The HyperCore-side spot address responsible for the HC spot asset paired with your `EXLST` EVM contract — the address that buys the ticker on the HC auction and deploys the spot asset (typically **after** the EVM `EXLST` is deployed, though the order isn't enforced). Used by HyperCore's Path-2 linker to associate the EVM `EXLST` ERC20 with its HC spot counterpart. **Not** necessarily the same wallet as the EVM-side `deployMarket` caller — the HC asset deploy and the EVM market deploy are independent operations. |
+| `deployerTreasury` | `address` | Yes | Your treasury address on **HyperCore spot** (not EVM). Receives your share of HIP-3 trading fees via the per-market `LaunchFeeSplitter` (`CoreWriter.sendAsset`). Must already be **activated** on HyperCore — the factory's `deployMarket` asserts `coreUserExists(deployerTreasury)` and reverts if not. |
+| `buybackBps` | `uint64` | Yes | Basis points (0–10000) of the post-protocol-fee remainder routed to the per-market buyback loop (compounds the `EXLST` rate, benefits depositors + your bonded share). The remainder of the remainder goes to `deployerTreasury` as direct revenue. Typical mainnet value: `1000` (10%). See the fee-split diagram below for a worked example. |
+
+`evm.cancelRecipient` (top-level, **optional**) — destination address for the `opBond` refund if you cancel the market pre-bond via `cancelMarket`. Defaults to `msg.sender` at `cancelMarket` time if unset. Useful when the deploy and cancel transactions are signed from different EOAs.
+
+#### Fields pinned by Kinetiq (`script/config/globals/<network>.json`)
+
+These ship with the repo under `script/config/globals/` (one file per network) and are merged in automatically when the deploy script reads your market config. You do not need to set them.
+
+| Field | Description |
+| --- | --- |
+| `enclaver` | Per-market address holding `WALLET_ROLE` on `EXManager`. Passive identifier the off-chain Kinetiq enclave reads (`hasRole(WALLET_ROLE, requester)`) to authenticate HC-side API-wallet requests for your market. Kinetiq pins this; rotatable later via `EXFactory.transferEnclaver` (admin-only). |
+| `marketTier` | 1-indexed market tier from `globalConfig.marketTiers`. Each tier defines `minHypeStake` (the LIVE-phase reserve floor below which withdrawals get blocked into the BWQ) and `supplyCap` (the `EXLST` mint cap). Kinetiq pins to tier 1 (HIP-3 default) in globals. Higher tiers are unlocked post-launch via `queueTierUpgrade` → `confirmTierUpgrade`. |
 
 Initial HIP-3 market tier configuration (Tier 1):
-- `minHypeStake = 500_000`
-- `exLSTSupplyCap = 750_000`
+- `minHypeStake = 500_000` HYPE
+- `exLSTSupplyCap = 750_000` HYPE-equivalent
 
 #### Example Fee Split Diagram
 
@@ -81,6 +97,39 @@ Example with total fees = 100%
 - Deployer share (remaining 90% of 45%): 40.5%
 
 Note: This example assumes the 1.0 deployerFeeShare(1:1 HL/Deployer split.), `buybackBps = 1000` (operator configured), and `protocolFeeShare = 1000` (configured by Kinetiq). This is the `protocolFeeShare` at rollout but it is subject to change.
+
+### Core (HyperCore) Configuration
+
+The `core` block in your market config describes the HyperCore-side perp dex registration. Kinetiq submits these to HyperCore on your behalf during onboarding — you don't run `perpDeploy` directly.
+
+#### `core.registerAsset.assetRequest`
+
+The HC perp asset definition.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `coin` | `string` | Your perp's ticker symbol (e.g. `"ABC"`, `"XYZ-PERP"`). What traders see on the orderbook. |
+| `szDecimals` | `uint8` | Decimals of precision for order sizes. Typical 2–6 depending on price magnitude — lower for high-priced assets, higher for low-priced. |
+| `oraclePx` | `string` | Initial oracle price as a decimal string (e.g. `"1.0"`, `"1234.56"`). Set to a reasonable starting mark; the oracle adapter takes over after launch. |
+| `marginTableId` | `uint32` | References the HC margin table that defines initial/maintenance margin tiers + liquidation params for your perp. Default `1` unless coordinated with Kinetiq for custom leverage / risk parameters. |
+| `onlyIsolated` | `bool` | `true` to force isolated-margin only for this perp (no cross-margin); `false` for standard cross. Most perps use `false`. |
+
+#### `core.registerAsset.dex`
+
+`string` — your dex namespace handle (e.g. `"abc"`). Visible in HC's dex registry. Lowercase, alphanumeric.
+
+#### `core.registerAsset.schema`
+
+The dex registration metadata.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `fullName` | `string` | Human-readable dex name (shown in HyperCore's UI). |
+| `collateralToken` | `uint32` | HC token id used both as the perp's collateral **and** as the activation token bridged by `activateMarket`. Default `0` = USDC. The deploy scripts pull this value to determine which token to approve + bridge for activation, so it must already be registered as an activation token in `GlobalConfig.activationTokens`. |
+
+#### `core.subdeployers`
+
+Array of `{ variant, address }` entries authorizing additional addresses to call specific HC `perpDeploy` variants on your behalf (e.g. `setOracle`, `setFundingMultipliers`, `haltTrading`). Kinetiq supports most variants by request — see the Sub Deployer Policy section below.
 
 ### Deployment and Pre-Launch Sequence
 

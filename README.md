@@ -8,12 +8,21 @@ For deployer onboarding — configuration field reference, operator lifecycle ca
 
 ## Configure your market
 
-1. Copy `TEMPLATE.json` to your own per-market file (e.g. `my-market.json`) — that's what `$MARKET_CONFIG_JSON` will point at.
+1. Copy `TEMPLATE.json` to your own per-market file (e.g. `my-market.json`) — that's what `$MARKET_CONFIG_JSON` will point at. See `script/config/example-{testnet,mainnet-dryrun}.json` for filled-in examples.
 2. Set `network.name` to one of: `mainnet`, `testnet`, `mainnet-dryrun`. The deploy script auto-resolves the matching `script/config/globals/<network>.json` and asserts your declared `chainId` lines up with the RPC.
-3. Fill in `evm.marketParams` (admin / operator / validator / opBond / lstName / lstSymbol / hyperCoreDeployer / deployerTreasury / buybackBps / gate). Per-field guidance + recommended values in [`WALKTHROUGH.md`](./WALKTHROUGH.md#deployment-configuration).
-4. Fill in `core.registerAsset` (HC perp dex registration — coin, decimals, oracle, collateral token). The deploy scripts read `collateralToken` as the activation token. See [`WALKTHROUGH.md`](./WALKTHROUGH.md) for the HC-side schema.
+3. Fill in `evm.marketParams`:
+   - `admin` — multisig that controls operator/admin/enclaver role transfers via the factory
+   - `operator` — receives `OPERATOR_ROLE`; drives the lifecycle (`fund`/`launch`/`unwind`/tier upgrades)
+   - `opBond` — wei (1e10-aligned); locked for the life of the market, returned to the deployer EOA when wind-down is finalized via `unwind()`
+   - `validator` — your chosen L1 validator (must be active in Kinetiq's approved set)
+   - `gate` — `IEXGate` contract address, or `0x0` for no gate (the typical initial market setup)
+   - `lstName` / `lstSymbol` — ERC20 metadata for your per-market `EXLST` shares
+   - `hyperCoreDeployer` — HC spot address responsible for deploying (or having deployed) the HC asset paired with your `EXLST` EVM contract
+   - `deployerTreasury` — your HC spot treasury for the deployer fee share (must already be activated on HC)
+   - `buybackBps` — basis points of the post-protocol-fee remainder routed to the LST buyback loop (typical `1000` = 10%)
+4. Fill in `core.registerAsset` (HC perp dex registration — coin, decimals, oracle, collateral token). The deploy scripts read `collateralToken` as the activation token. See [`WALKTHROUGH.md`](./WALKTHROUGH.md#core-hypercore-configuration) for the HC-side schema.
 
-Optionally set `evm.cancelRecipient` if you want a pre-bond `cancelMarket` refund to land somewhere other than the deploy EOA.
+`enclaver` + `marketTier` are pinned by Kinetiq in `script/config/globals/<network>.json` — no action needed. Optionally set `evm.cancelRecipient` if you want a pre-bond `cancelMarket` refund to land somewhere other than the deploy EOA. Full per-field detail in [`WALKTHROUGH.md`](./WALKTHROUGH.md#deployment-configuration).
 
 ## Deployment
 
