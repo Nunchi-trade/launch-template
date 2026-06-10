@@ -50,8 +50,8 @@ The deployer's market config (your filled-in copy of `TEMPLATE.json`) carries th
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `admin` | `address` | Yes | The address (typically your governance multisig) that controls role transfers via the factory: `EXFactory.transferOperator` / `transferAdmin` / `transferEnclaver`. It does **not** hold the lifecycle `OPERATOR_ROLE` itself — it's the meta-authority that can rotate the operator if needed. |
-| `operator` | `address` | Yes | The address that receives `OPERATOR_ROLE` on `EXManager` and drives the market lifecycle: `fund()` (FUNDING → LAUNCHING), `launch()` (LAUNCHING → LIVE), `updateWallet()` relay, tier upgrades, voluntary `setUnwindPhase()` / `unwind()`. Can be an EOA or multisig. Day-to-day market ops happen from this address. |
-| `opBond` | `uint256` | Yes | Operator bond in wei. Must satisfy `globalConfig.minOperatorBond()` (mainnet floor `Constants.MIN_OPERATOR_BOND = 100 HYPE`, initial mainnet config 1000 HYPE) and be 1e10-aligned (because HYPE bridges at 8 decimals on HC). Sent as `msg.value` on `deployMarket`. The bond is locked until the market fully winds down; on `unwind()` finalize the bond shares sweep back to the deployer EOA. |
+| `operator` | `address` | Yes | The address that receives `OPERATOR_ROLE` on `EXManager` and drives the market lifecycle: `fund()` (FUNDING → LAUNCHING), `launch()` (LAUNCHING → LIVE), `updateWallet()` relay, voluntary `setUnwindPhase()` / `unwind()`. Can be an EOA or multisig. Day-to-day market ops happen from this address. |
+| `opBond` | `uint256` | Yes | Operator bond in wei. Must satisfy `globalConfig.minOperatorBond()` (mainnet floor 1000 HYPE) and be 1e10-aligned (HYPE bridges at 8 decimals on HC). Sent as `msg.value` on `deployMarket`. The bond is locked until the market fully winds down; on `unwind()` finalize the bond shares sweep back to the deployer EOA. |
 | `validator` | `address` | Yes | Your chosen L1 validator for the per-market staking layer. Must be active in Kinetiq's approved validator set (the deploy script pre-flight asserts `validatorActiveState(validator) == true` and reverts otherwise). The validator earns delegation rewards which flow through the per-market reward share split. |
 | `gate` | `address` | Optional | Optional `IEXGate` contract for access control on deposits/withdrawals. Set `address(0)` for no gate (the typical initial market setup). If set, the gate's `onDeposit` / `onWithdraw` hooks fire after every action and can revert to reject. Standard gates: `WhitelistGate` (EIP712 sigs + tiered caps), `TieredMintGate` (token-lock-based allowance), `CompositeGate` (AND-compose). |
 | `lstName` | `string` | Yes | ERC20 `name()` of your per-market `EXLST` share token (e.g. `"Acme Markets Liquid Stake"`). Visible to depositors in wallets and explorers. |
@@ -69,7 +69,7 @@ These ship with the repo under `script/config/globals/` (one file per network) a
 | Field | Description |
 | --- | --- |
 | `enclaver` | Per-market address holding `WALLET_ROLE` on `EXManager`. Passive identifier the off-chain Kinetiq enclave reads (`hasRole(WALLET_ROLE, requester)`) to authenticate HC-side API-wallet requests for your market. Kinetiq pins this; rotatable later via `EXFactory.transferEnclaver` (admin-only). |
-| `marketTier` | 1-indexed market tier from `globalConfig.marketTiers`. Each tier defines `minHypeStake` (the LIVE-phase reserve floor below which withdrawals get blocked into the BWQ) and `supplyCap` (the `EXLST` mint cap). Kinetiq pins to tier 1 (HIP-3 default) in globals. Higher tiers are unlocked post-launch via `queueTierUpgrade` → `confirmTierUpgrade`. |
+| `marketTier` | 1-indexed market tier from `globalConfig.marketTiers`. Each tier defines `minHypeStake` (the LIVE-phase reserve floor below which withdrawals get blocked into the BWQ) and `supplyCap` (the `EXLST` mint cap). Kinetiq pins to tier 1 (HIP-3 default) in globals. |
 
 Initial HIP-3 market tier configuration (Tier 1):
 - `minHypeStake = 500_000` HYPE
@@ -137,24 +137,65 @@ Array of `{ variant, address }` entries authorizing additional addresses to call
 2. Your deployer executes `EXFactory.activateMarket(...)` with required activation tokens.
 3. Your deployer executes `EXFactory.bondMarket(...)` to finalize bonding into `EXManager`.
 4. Your operator executes `EXManager.fund()` when reserves meet tier minimum stake (`FUNDING -> LAUNCHING`).
-5. Your operator executes `EXManager.launch(walletSignedData)` after `fund()` succeeds (`LAUNCHING -> LIVE`).  
-   Kinetiq UI support will provide the signed wallet payload for this action.
+5. Your operator executes `EXManager.launch(walletSignedData)` after `fund()` succeeds (`LAUNCHING -> LIVE`). See [Wallet Admin Flow](#wallet-admin-flow) for how the signed payload is produced and submitted.
 
-## Required Operator Smart Contract Calls
+## Post-bond Operations
 
-Operator actions are phase-gated in `EXManager`.
+Three role surfaces participate post-bond: the **admin** (factory-level role rotations), the **operator** (lifecycle on `EXManager`), and Kinetiq's off-chain **enclave** (signs the `WalletData` payload for `launch` / `updateWallet`). Admin and operator calls are listed here; the payload flow is in [Wallet Admin Flow](#wallet-admin-flow).
 
 **UI support:** Kinetiq provides UI flows for these calls so your team does not need to submit raw calldata.
 
-| Function | Contract to Call | Who Calls | Required Phase/State | Purpose | Timing |
+### Admin role
+
+| Function | Contract | Who Calls | Purpose |
+| --- | --- | --- | --- |
+| `transferOperator(marketId, newOperator)` | `EXFactory` | Current admin | Atomic revoke/grant of `OPERATOR_ROLE` on `EXManager`. Use to rotate the operator (compromised key, ops handoff). |
+| `transferAdmin(marketId, newAdmin)` | `EXFactory` | Current admin | Rotate the admin itself (multisig change, ownership transfer). |
+| `transferEnclaver(marketId, newEnclaver)` | `EXFactory` | Current admin | Atomic revoke/grant of `WALLET_ROLE`. Usually only needed if Kinetiq rotates the off-chain enclave key. |
+
+All three are EVM-only — they emit factory events but do not change phase or touch reserve.
+
+### Operator calls
+
+Operator actions are phase-gated in `EXManager`.
+
+| Function | Contract | Who Calls | Required Phase | Purpose | Timing / Notes |
 | --- | --- | --- | --- | --- | --- |
-| `bondMarket(...)` (calls `EXManager.bond()`) | `EXFactory` | Your market deployer | `EXManager` in `UNBONDED` and market activated | Finalizes bonding. `EXManager.bond()` is factory-gated (`msg.sender == factory`). | After `activateMarket(...)`, before `fund()`. |
-| `fund()` | `EXManager` | Your `OPERATOR_ROLE` address | `FUNDING` | Verifies minimum stake and transitions to `LAUNCHING`. | Once reserves satisfy tier minimum. |
-| `launch(walletSignedData)` | `EXManager` | Your `OPERATOR_ROLE` address | `LAUNCHING` | Sets API wallet from signed payload and transitions to `LIVE`. | Immediately after `fund()` succeeds. |
+| `bondMarket(...)` (calls `EXManager.bond()`) | `EXFactory` | Market deployer | `UNBONDED` + activated | Finalizes bonding. `EXManager.bond()` is factory-gated. | After `activateMarket(...)`, before `fund()`. |
+| `fund()` | `EXManager` | `OPERATOR_ROLE` | `FUNDING` | Verifies reserves ≥ tier `minHypeStake`; transitions to `LAUNCHING`. | Once reserves satisfy tier minimum. |
+| `launch(walletSignedData)` | `EXManager` | `OPERATOR_ROLE` | `LAUNCHING` | Sets API wallet from signed payload; transitions to `LIVE`. Fires CoreWriter action 9 (`addApiWallet`). | Immediately after `fund()` succeeds. Requires Kinetiq-signed payload — see [Wallet Admin Flow](#wallet-admin-flow). |
+| `setUnwindPhase(true/false)` | `EXManager` | `OPERATOR_ROLE` | Any active phase | Queue (or cancel) voluntary unwind. Once queued, operator lifecycle ops freeze. | Sets `unwindEligibleAt = block.timestamp + unwindDelay`. |
+| `unwind()` | `EXManager` | `OPERATOR_ROLE` | After `unwindEligibleAt` | Finalize wind-down; sweep `opBond` shares back to deployer. Transitions to `WOUND_DOWN`. | LIVE-phase finalize **additionally** requires Kinetiq's HC attestation + `minLinkAgeForUnwind` cliff (183 days on mainnet). |
+| `updateWallet(walletSignedData)` | `EXManager` | `OPERATOR_ROLE` | `LIVE` / `WOUND_DOWN` | Rotate the HC API wallet. Same Kinetiq-signed payload path as `launch`. | Operator-relay branch frozen during the unwind window. |
 
 ## Enclave and Sub Deployers
 
 During onboarding, Kinetiq manages enclave setup and initial sub deployer configuration for your market.
+
+### Wallet Admin Flow
+
+```mermaid
+sequenceDiagram
+    participant ENC as Off-chain Enclave
+    participant SUB as exWalletAdmin or Operator
+    participant EM as EXManager
+    participant CW as HyperCore CoreWriter
+    Note over ENC: Off-chain auth - enclave verifies submitter via per-market WALLET_ROLE
+    ENC->>ENC: build WalletData and EIP712-sign with exWalletAdmin
+    ENC-->>SUB: signed payload
+    SUB->>EM: launch or updateWallet
+    EM->>EM: phase guard LAUNCHING / LIVE / WOUND_DOWN
+    EM->>EM: verify EIP712 sig
+    EM->>CW: setApiWallet (CoreWriter action 9)
+    EM-->>SUB: wallet
+```
+
+- **What you do**: request a `WalletData` payload from Kinetiq when ready to call `launch()` (and for any later wallet rotation via `updateWallet`).
+- **Who signs**: Kinetiq's off-chain enclave, using `globalConfig.exWalletAdmin`. The per-market `enclaver` (`WALLET_ROLE`) is a passive identifier the enclave reads to authenticate the request — **not** the signer.
+- **What you submit**: `launch(walletSignedData)` (LAUNCHING) or `updateWallet(walletSignedData)` (LIVE / WOUND_DOWN). `EXManager` verifies the signature on-chain.
+- **During unwind window**: the operator-relay branch of `updateWallet` freezes; Kinetiq can still rotate the wallet directly for HC cleanup.
+
+Future Kinetiq SDK / UI will automate the payload request; for now the operator coordinates with Kinetiq manually.
 
 ### Kinetiq-Managed Scope
 
