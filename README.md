@@ -27,6 +27,23 @@ For deployer onboarding — configuration field reference, operator lifecycle ca
 
 `enclaver` + `marketTier` are pinned by Kinetiq in `script/config/globals/<network>.json` — no action needed. Optionally set `evm.cancelRecipient` if you want a pre-bond `cancelMarket` refund to land somewhere other than the deploy EOA. Full per-field detail in [`WALKTHROUGH.md`](./WALKTHROUGH.md#deployment-configuration).
 
+## Fork rehearsal (optional, recommended)
+
+Before risking capital on a real deploy, fork-test the lifecycle against the live protocol singletons. The rehearsal creates a mainnet fork inside the script and runs either the full success path (`e2e`) or the pre-bond cancel (`cancel`) — no `--broadcast`, no on-chain effect.
+
+Set `SENDER` to your production deployer address (the one that will eventually call `deployMarket` for real). The rehearsal reads its live balance + state from the fork; if your address already holds enough HYPE + activation token, the run is fully realistic. If not, the script logs the gap and tops up via cheatcodes. `PRIVATE_KEY` can be a throwaway dev key — the rehearsal never broadcasts. Set at least one of `SENDER` or `PRIVATE_KEY` (if only `PRIVATE_KEY` is set, msg.sender derives from it).
+
+```shell
+export RPC_URL=https://rpc.hyperliquid.xyz/evm
+export MARKET_CONFIG_JSON=script/config/example-mainnet.json
+export SENDER=0xYourProductionDeployer       # your real deploy address
+
+./script/deployment/lifecycle-rehearsal.sh e2e
+./script/deployment/lifecycle-rehearsal.sh cancel
+```
+
+The rehearsal snapshots `marketConfig.deployed.*` at entry and restores it at exit, so the file is unchanged after a successful run. If the rehearsal reverts mid-flight, run `git checkout $MARKET_CONFIG_JSON` to recover.
+
 ## Deployment
 
 Per-market lifecycle is three on-chain phases. HyperCore must confirm the activation token bridge
@@ -41,10 +58,16 @@ the phases in order.
 | `activateMarket` | 6 × `core.registerAsset.schema.collateralToken` (e.g. 6 USDC at 6 decimals) | Script pulls + bridges to HyperCore so the per-market contracts have HC accounts [Core after bridge]. |
 | `bondMarket` | none | Factory forwards escrowed `opBond` into the per-market reserve, mints `EXLST` 1:1 to the deployer, transitions to FUNDING [EVM]. |
 
+**Before broadcasting:**
+
+- **Enable HyperEVM big blocks** on your deployer address before `deployMarket`. The factory deploys a full per-market contract suite (~13 contracts) in one tx; HyperEVM's small-block gas limit is too low to fit it. Toggle big blocks via the Hyperliquid UI/API for the deployer address before running `deployMarket`.
+- **Set `BROADCAST=1`** to actually send the transactions. The default (`BROADCAST=0`) runs as fork simulation only — **no on-chain effect**. `vm.writeJson` still mutates `$MARKET_CONFIG_JSON` either way, so point at a throwaway copy if you want the original clean.
+
 ```shell
 export RPC_URL=https://...
 export PRIVATE_KEY=0x...
 export MARKET_CONFIG_JSON=path/to/market.json   # your filled-in copy of TEMPLATE.json
+export BROADCAST=1                              # REQUIRED to actually send tx on-chain
 
 ./script/deployment/deploy-first-market.sh deployMarket
 ./script/deployment/deploy-first-market.sh activateMarket
