@@ -1,0 +1,53 @@
+{
+  "network": {
+    "name": "mainnet",
+    "chainId": 999
+  },
+  "evm": {
+    "marketParams": {
+      "admin": "0xCd9F66B3180A0C52fffcB648A7039Ab0E02e431C",
+      "operator": "0xa784E9D7E6463433dE6F56435545E4eb3881070f",
+      "opBond": "1000000000000000000000",
+      "validator": "0xEEEe86F718F9Da3e7250624A460f6EA710E9C006",
+      "gate": "0x0000000000000000000000000000000000000000",
+      "lstName": "Example Launch LST",
+      "lstSymbol": "exmHYPE",
+      "hyperCoreDeployer": "0xa784E9D7E6463433dE6F56435545E4eb3881070f",
+      "deployerTreasury": "0xCd9F66B3180A0C52fffcB648A7039Ab0E02e431C",
+      "buybackBps": 1000
+    },
+    "cancelRecipient": "0xCd9F66B3180A0C52fffcB648A7039Ab0E02e431C"
+  },
+  "core": {
+    "registerAsset": {
+      "assetRequest": {
+        "coin": "EXM",
+        "szDecimals": 2,
+        "oraclePx": "1.0",
+        "marginTableId": 1,
+        "onlyIsolated": false
+      },
+      "dex": "exm",
+      "schema": {
+        "fullName": "EXM Perp DEX",
+        "collateralToken": 0
+      }
+    },
+    "subdeployers": [
+      {
+        "variant": "registerAsset",
+        "address": "0x61D05a1131A5EBaB144aaAFF6806f0C509A16c07"
+      },
+      {
+        "variant": "setOracle",
+        "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D"
+      }
+    ]
+  },
+  "deployed": {
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "exManager": "0x0000000000000000000000000000000000000000",
+    "bonded": false,
+    "cancelled": false
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "network": {
+    "name": "mainnet",
+    "chainId": 999
+  },
+  "hyperliquid": {
+    "l1Read": "0x64122a7231eaE30C98274D90D2a34f4356d2a4Fa",
+    "hypeTokenId": "150"
+  },
+  "deployed": {
+    "MinimalImplementation": "0x1a929b0C41265AB31F9b87CBa397d4EAd5Be503B",
+    "GlobalConfig": "0x23CcD0f1926E4f97d9292683B45fAdBDb066AE50",
+    "PauserRegistry": "0xC2b4350D952550ce4d2A4023a7935931fD2Bd6dA",
+    "FacetRegistry": "0xB6509D615553DCba03D1208BC4F103109537294C",
+    "UpgradeableBeaconRegistry": "0x804A50082A394C65672Cb6A8Bd31EBe2CEb22bA1",
+    "EXDeployer": "0x5f06F2B0A5ABDa058A2771107b15b374E82361ea",
+    "EXFactory": "0x188a8CFa039C049c6B076C52164E5d51ee207a98",
+    "ProtocolRolesController": "0x9f4Ea6E461759E5D920B5e294f10870ef0949A4E",
+    "EXRouter": "0x06629c64AAF1639A7CDE24DFe0D1E1eD3E56BF3d",
+    "facets": {
+      "StakingFacet": "0xdB687B1573EFcF9b1FE20200Ce076ADb20280101",
+      "AdminFacet": "0xa018e1B425cafa121aaFBF69E295CBF3443Caf29",
+      "SlashingAwareWithdrawalFacet": "0xD0A6e406963994d5e11c0615985310B985C0CDfb",
+      "L1OperationsFacet": "0xde8Ff4C500255F813E66484546F5EeDD5A76e898",
+      "WhitelistFacet": "0x4e4A25CA715E2f9d138c3f979a0c0fe01F3A0d94",
+      "RewardShareFacet": "0x9596594a79D84Aa3627C1Aee619602a0a6af6022",
+      "HIP3ConfigFacet": "0x436c3B383c2c6B015777b593C449dcFc7Aa45aa2"
+    },
+    "beaconImpls": {
+      "StakingManagerRouter": "0x48FA0895cb7BE320755Ee28B66F11a1b1A75D37f",
+      "EXManager": "0xf3640ba7A6dB016073549650355c8a04C24E7F4A",
+      "EXLST": "0xa73329b2c5E4a25B7696512062E30aB107754d24",
+      "StakingAccountant": "0xb1044018E93bdaB972f0ae1b5141B18c4D66C62D",
+      "ValidatorManager": "0x7C437f80bD6fc841e062337C6d19f660cD97bfb5",
+      "OracleManager": "0xEe1c98f64AA9F5Ef01Fc406da5af5de1d6affF0d",
+      "RewardShareTracker": "0x93b35884a72fEf8e87d1FcaC44E18EeaA35bA846",
+      "GhostLST": "0xB3655578FCCEb30e0076F5aB4228C64bf79E1b04",
+      "BlockedWithdrawalQueue": "0xca3b83AD82131E28A603D9E2523b0d023a379C55",
+      "LaunchFeeSplitter": "0xb82d0faCE2e70cAa74f67Aeb90ce361B14c7171E",
+      "StakeFeesThrottle": "0x99A093e7cBDD49071A8bCD0E1A5A7553E52DD62e"
+    }
+  },
+  "markets": {
+    "enclaver": "0x64D668b358E4915Fda4Aa8d3bffe36A6d3D8cd27",
+    "marketTier": 1
+  }
+}

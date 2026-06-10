@@ -8,7 +8,7 @@ For deployer onboarding — configuration field reference, operator lifecycle ca
 
 ## Configure your market
 
-1. Copy `TEMPLATE.json` to your own per-market file (e.g. `my-market.json`) — that's what `$MARKET_CONFIG_JSON` will point at. See `script/config/example-{testnet,mainnet-dryrun}.json` for filled-in examples.
+1. Copy `TEMPLATE.json` to your own per-market file (e.g. `my-market.json`) — that's what `$MARKET_CONFIG_JSON` will point at. See `script/config/example-{mainnet,mainnet-dryrun,testnet}.json` for filled-in examples.
 2. Set `network.name` to one of: `mainnet`, `testnet`, `mainnet-dryrun`. The deploy script auto-resolves the matching `script/config/globals/<network>.json` and asserts your declared `chainId` lines up with the RPC.
 3. Fill in `evm.marketParams`:
    - `admin` — multisig that controls operator/admin/enclaver role transfers via the factory
@@ -31,7 +31,10 @@ between phases, so each phase is its own command. Set the env vars once per shel
 the phases in order.
 
 **Capital required on the deployer EOA (per phase):**
-- `deployMarket` — `opBond` HYPE (whatever you set in `evm.marketParams.opBond`), sent as `msg.value` and escrowed by the factory.
+- `deployMarket` — `opBond` HYPE (whatever you set in `evm.marketParams.opBond`), sent as `msg.value` and escrowed by the factory. Must satisfy the network's `globalConfig.minOperatorBond()` floor:
+  - `mainnet` — **1000 HYPE** (`1000000000000000000000` wei)
+  - `mainnet-dryrun` — 1 HYPE (`1000000000000000000` wei)
+  - `testnet` — 1 HYPE (`1000000000000000000` wei)
 - `activateMarket` — 6 of your `core.registerAsset.schema.collateralToken` token (e.g. 6 USDC at 6 decimals). The script pulls + bridges this to HyperCore so the per-market contracts have HC accounts.
 - `bondMarket` — no additional capital. The factory forwards the escrowed `opBond` into the per-market reserve, mints `EXLST` shares 1:1 to the deployer, and transitions the market to FUNDING (depositors can now stake).
 
