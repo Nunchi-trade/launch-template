@@ -54,8 +54,8 @@ the phases in order.
 
 | Phase | Capital | Notes |
 |---|---|---|
-| `deployMarket` | `opBond` HYPE [EVM] | Must satisfy `globalConfig.minOperatorBond()` — see [Network parameters](#network-parameters). Sent as `msg.value`, escrowed by the factory. |
-| `activateMarket` | 6 × `core.registerAsset.schema.collateralToken` (e.g. 6 USDC at 6 decimals) | Script pulls + bridges to HyperCore so the per-market contracts have HC accounts [Core after bridge]. |
+| `deployMarket` | `opBond` HYPE **on HyperEVM** [EVM] | Must satisfy `globalConfig.minOperatorBond()` — see [Network parameters](#network-parameters). Sent as `msg.value`, escrowed by the factory. Bridge HYPE from HyperCore spot first if your balance lives there. |
+| `activateMarket` | 6 × `core.registerAsset.schema.collateralToken` **on HyperEVM** (e.g. 6 USDC at 6 decimals) | Script pulls from the deployer's HyperEVM balance and bridges per-contract shares to HyperCore so the per-market contracts have HC accounts [Core after bridge]. Bridge USDC from HyperCore spot first if needed. |
 | `bondMarket` | none | Factory forwards escrowed `opBond` into the per-market reserve, mints `EXLST` 1:1 to the deployer, transitions to FUNDING [EVM]. |
 
 **Before broadcasting:**
