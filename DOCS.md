@@ -198,7 +198,7 @@ The roles you've already chosen — **admin** and **operator** — come first. Y
 
 Two fields are pinned by Kinetiq today (not deployer-selectable):
 
-- **`marketTier`** — the market tier index. Tier 1 is the HIP-3 default: a `minHypeStake` floor of 500,000 HYPE (the reserve floor enforced once the market is LIVE) and an `EXLST` supply cap of 750,000 HYPE-equivalent. Higher tiers unlock additional capacity and are gated by Kinetiq's tier registry.
+- **`marketTier`** — the market tier index. Tier 1 is the HIP-3 default. On **mainnet** the tier 1 floor is `minHypeStake = 500,000` HYPE with an `EXLST` supply cap of 750,000 HYPE-equivalent. The dryrun and testnet networks use much smaller test-sized floors (4 HYPE on mainnet-dryrun, 100 HYPE on testnet) so deployers can rehearse the full FUNDING → LAUNCHING transition without committing real capital. Higher tiers unlock additional capacity and are gated by Kinetiq's tier registry.
 - **`enclaver`** — for the initial deployer cohort, this is set to a Kinetiq-managed address while the JSON-handshake onboarding flow is in place. Once Kinetiq ships the deployer-facing API / UI for the enclave, deployers set this themselves to a wallet or service they control. The on-chain authentication mechanism (the `WALLET_ROLE` check inside the enclave) is unchanged either way.
 
 ## HyperCore configuration
@@ -274,7 +274,7 @@ EXManager.fund();                          // 1. FUNDING -> LAUNCHING (reserves 
 EXManager.launch(walletSignedData);        // 2. LAUNCHING -> LIVE (registers HC API wallet)
 ```
 
-The operator calls `fund()` once the per-market reserve meets the tier floor (500,000 HYPE for Tier 1). It's callable any time reserves are at or above the floor, so the operator can choose to wait until reserves reach the tier's `EXLST` supply cap (750,000 HYPE for Tier 1) before going LIVE if they want to mint more shares first. This is a pure HyperEVM state transition — no HyperCore interaction yet.
+The operator calls `fund()` once the per-market reserve meets the tier floor (mainnet Tier 1: 500,000 HYPE floor and 750,000 HYPE supply cap; mainnet-dryrun is sized at 4 HYPE / 6 HYPE for rehearsals; testnet at 100 HYPE / 150 HYPE). It's callable any time reserves are at or above the floor, so the operator can choose to wait until reserves reach the tier's `EXLST` supply cap before going LIVE if they want to mint more shares first. This is a pure HyperEVM state transition — no HyperCore interaction yet.
 
 For `launch`, the contract requires an EIP712-signed `walletSignedData` payload. The payload carries the **HyperCore API wallet** — the "agent" address that signs HyperCore actions on behalf of the market's `StakingManagerRouter` — plus a monotonic nonce and the target market id. The enclave signs this payload with `globalConfig.exWalletAdmin`. Once `EXManager.launch(walletSignedData)` runs, the `StakingManagerRouter` calls CoreWriter action 9 (`addApiWallet`) to register the API wallet on HyperCore. The market is now connected end to end and trading can proceed.
 

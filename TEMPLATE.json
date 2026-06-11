@@ -34,14 +34,17 @@
       }
     },
     "subdeployers": [
-      {
-        "variant": "registerAsset",
-        "address": "0x0000000000000000000000000000000000000000"
-      },
-      {
-        "variant": "setOracle",
-        "address": "0x0000000000000000000000000000000000000000"
-      }
+      { "variant": "registerAsset", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setOracle", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setFundingMultipliers", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setFundingInterestRates", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "haltTrading", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setMarginTableIds", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setOpenInterestCaps", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "insertMarginTable", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setGrowthModes", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setMarginModes", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setPerpAnnotation", "address": "0x0000000000000000000000000000000000000000" }
     ]
   },
   "deployed": {

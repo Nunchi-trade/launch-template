@@ -34,14 +34,17 @@
       }
     },
     "subdeployers": [
-      {
-        "variant": "registerAsset",
-        "address": "0x61D05a1131A5EBaB144aaAFF6806f0C509A16c07"
-      },
-      {
-        "variant": "setOracle",
-        "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D"
-      }
+      { "variant": "registerAsset", "address": "0x61D05a1131A5EBaB144aaAFF6806f0C509A16c07" },
+      { "variant": "setOracle", "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D" },
+      { "variant": "setFundingMultipliers", "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D" },
+      { "variant": "setFundingInterestRates", "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D" },
+      { "variant": "haltTrading", "address": "0x61D05a1131A5EBaB144aaAFF6806f0C509A16c07" },
+      { "variant": "setMarginTableIds", "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D" },
+      { "variant": "setOpenInterestCaps", "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D" },
+      { "variant": "insertMarginTable", "address": "0x61D05a1131A5EBaB144aaAFF6806f0C509A16c07" },
+      { "variant": "setGrowthModes", "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D" },
+      { "variant": "setMarginModes", "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D" },
+      { "variant": "setPerpAnnotation", "address": "0xf597F50ddfB6CF2c4cf5c0a022C0FbeFD757df7D" }
     ]
   },
   "deployed": {

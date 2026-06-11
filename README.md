@@ -91,6 +91,54 @@ needed):
 
 The script writes deployed marketId / exManager / bonded / cancelled flags back to `$MARKET_CONFIG_JSON` between phases — run them in order, no need to manually thread state.
 
+## Operator flows
+
+After `bondMarket` the market is in FUNDING. The **operator** (the address set as `operator` in `MarketParams` at deploy time, or whoever the admin most recently rotated to via `EXFactory.transferOperator`) drives the rest of the lifecycle on `EXManager` via `./script/deployment/operator-flow.sh`. Same env-var preamble as the deploy driver.
+
+```shell
+export RPC_URL=https://...
+export PRIVATE_KEY=0x...                          # operator EOA (must hold OPERATOR_ROLE)
+export MARKET_CONFIG_JSON=path/to/market.json
+export BROADCAST=1                                # REQUIRED to send tx on-chain
+
+# FUNDING -> LAUNCHING (once reserves >= tier minHypeStake)
+./script/deployment/operator-flow.sh fund
+
+# LAUNCHING -> LIVE (walletDataHex + walletSignatureHex come from Kinetiq's enclave)
+./script/deployment/operator-flow.sh launch <walletDataHex> <walletSignatureHex>
+
+# Queue voluntary unwind (true) or cancel a queued one (false)
+./script/deployment/operator-flow.sh setUnwindPhase true
+./script/deployment/operator-flow.sh setUnwindPhase false
+
+# Finalize wind-down after unwindDelay (LIVE-phase additionally needs Kinetiq HC attestation + minLinkAgeForUnwind cliff)
+./script/deployment/operator-flow.sh unwind
+```
+
+Each phase pre-flights its on-chain prerequisites (phase guard, unwind state, ghost-LST reserve floor for `fund`, payload-length sanity for `launch`) and inline-verifies post-broadcast deltas with operator-readable revert messages. Default is fork-only simulation; set `BROADCAST=1` to actually send.
+
+## Depositor flows (testing)
+
+The depositor surface (`./script/deployment/user-flow.sh`) is most useful as a testing tool — primarily for **bringing reserves up to the tier floor on testnet or mainnet-dryrun** so the operator can call `fund()`. Same env-var preamble as above.
+
+```shell
+export RPC_URL=https://...
+export PRIVATE_KEY=0x...                          # depositor EOA (must hold the HYPE)
+export MARKET_CONFIG_JSON=path/to/market.json
+export BROADCAST=1
+
+# Stake HYPE -> mint EXLST shares (amount must be >= globalConfig.minStakeAmount and 1e10-aligned)
+./script/deployment/user-flow.sh deposit <amountWei> [<recipient>] [<dataHex>]
+
+# Burn EXLST -> queue HYPE withdrawal (paid out via confirm after the protocol's withdrawalDelay)
+./script/deployment/user-flow.sh withdraw <sharesWei> [<recipient>] [<maxBlockedShares>] [<dataHex>]
+
+# Confirm a queued withdrawal -> HYPE settles to recipient
+./script/deployment/user-flow.sh confirmWithdraw <withdrawalId> [<recipient>]
+```
+
+Defaults: `recipient = 0x0…0` (resolves to `msg.sender`), `dataHex = 0x` (NoOp gate — correct for example markets), `maxBlockedShares = type(uint256).max`. The per-network `globalConfig.minStakeAmount` is **0.1 HYPE** (`1e17` wei) on every network, and every payable entrypoint enforces `amount % 1e10 == 0` (HC 8-decimal bridge alignment).
+
 ## Network parameters
 
 `globalConfig` floors and delays the deploy + post-bond flows depend on, per network:

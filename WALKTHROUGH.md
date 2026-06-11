@@ -71,9 +71,12 @@ These ship with the repo under `script/config/globals/` (one file per network) a
 | `enclaver` | Per-market address holding `WALLET_ROLE` on `EXManager`. Passive identifier the off-chain Kinetiq enclave reads (`hasRole(WALLET_ROLE, requester)`) to authenticate HC-side API-wallet requests for your market. Kinetiq pins this; rotatable later via `EXFactory.transferEnclaver` (admin-only). |
 | `marketTier` | 1-indexed market tier from `globalConfig.marketTiers`. Each tier defines `minHypeStake` (the LIVE-phase reserve floor below which withdrawals get blocked into the BWQ) and `supplyCap` (the `EXLST` mint cap). Kinetiq pins to tier 1 (HIP-3 default) in globals. |
 
-Initial HIP-3 market tier configuration (Tier 1):
-- `minHypeStake = 500_000` HYPE
-- `exLSTSupplyCap = 750_000` HYPE-equivalent
+Initial HIP-3 market tier 1 configuration **per network**:
+- **mainnet** — `minHypeStake = 500_000` HYPE, `exLSTSupplyCap = 750_000` HYPE-equivalent.
+- **mainnet-dryrun** — `minHypeStake = 4` HYPE, `exLSTSupplyCap = 6` HYPE-equivalent. Test-sized so deployers can rehearse FUNDING → LAUNCHING end-to-end.
+- **testnet** — `minHypeStake = 100` HYPE, `exLSTSupplyCap = 150` HYPE-equivalent. Same intent as dryrun.
+
+Live values verifiable via `cast call <GlobalConfig> marketTiers(uint256)((uint256,uint256,string)) 1` against the address in `script/config/globals/<network>.json`.
 
 #### Example Fee Split Diagram
 
