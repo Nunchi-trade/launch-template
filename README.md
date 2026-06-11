@@ -125,3 +125,48 @@ The operator drives the per-market lifecycle on `EXManager`:
 - **Coordination with Kinetiq.** Request the `WalletData` payload from Kinetiq's enclave (off-chain, signed with `globalConfig.exWalletAdmin`) for `launch` and any future `updateWallet` rotation. On-chain submission is the operator's.
 
 Full per-call inventory + Wallet Admin Flow detail in [`WALKTHROUGH.md`](./WALKTHROUGH.md#post-bond-operations).
+
+## Deployed protocol contracts
+
+Per-network singleton addresses for the Launch protocol's deployer-facing contracts. Implementation, facet, and beacon impl addresses are intentionally omitted — these are the contracts your scripts and contract calls interact with directly. The deploy + verify scripts pick these up automatically from `script/config/globals/<network>.json` based on the `network.name` in your market config.
+
+### Mainnet (chainId 999)
+
+| Contract | Address |
+|---|---|
+| `GlobalConfig` | `0x23CcD0f1926E4f97d9292683B45fAdBDb066AE50` |
+| `PauserRegistry` | `0xC2b4350D952550ce4d2A4023a7935931fD2Bd6dA` |
+| `FacetRegistry` | `0xB6509D615553DCba03D1208BC4F103109537294C` |
+| `UpgradeableBeaconRegistry` | `0x804A50082A394C65672Cb6A8Bd31EBe2CEb22bA1` |
+| `EXDeployer` | `0x5f06F2B0A5ABDa058A2771107b15b374E82361ea` |
+| `EXFactory` | `0x188a8CFa039C049c6B076C52164E5d51ee207a98` |
+| `ProtocolRolesController` | `0x9f4Ea6E461759E5D920B5e294f10870ef0949A4E` |
+| `EXRouter` | `0x06629c64AAF1639A7CDE24DFe0D1E1eD3E56BF3d` |
+
+### Mainnet-dryrun (chainId 999)
+
+Separate deployment on the same HyperEVM mainnet chain — for testing the deploy flow against real mainnet state without touching production singletons.
+
+| Contract | Address |
+|---|---|
+| `GlobalConfig` | `0x0CD8bd124CB0B610CEC8EA35311ac2FEE6167269` |
+| `PauserRegistry` | `0x5609700347B35F39Ee82E23d77f71F6Bb9758168` |
+| `FacetRegistry` | `0x6420589a7C7d85c0D887eE61ea0a8ad42861224A` |
+| `UpgradeableBeaconRegistry` | `0x85e91F54DE98F2B7c4A59A3EC5933Ffa93C3e1bf` |
+| `EXDeployer` | `0xf9176658db4259aFF43699D7d6A5FAfb300959BB` |
+| `EXFactory` | `0xde9913e6A081F25b36e7ADd224D13d20FD3940B2` |
+| `ProtocolRolesController` | `0xae0b43ccb16423fE16B7A9D7392Fa6a907DD28D4` |
+| `EXRouter` | `0x7a5d01e345f28A6F2fb974808CA93F50a473C426` |
+
+### Testnet (chainId 998)
+
+| Contract | Address |
+|---|---|
+| `GlobalConfig` | `0xeCE7dfc7825d33B8C33BAB5CaB6B0178Aa0371a6` |
+| `PauserRegistry` | `0x343B88f27bb9553000C215aE9F146ee6421B2aA0` |
+| `FacetRegistry` | `0xAb9b5eaCD8bcBA443414958cDAA9d621Aa66ad64` |
+| `UpgradeableBeaconRegistry` | `0x6D446056920855afCB560f42916B0f0f996fC356` |
+| `EXDeployer` | `0x3B6192AF370D29c3F7baC7A12334a9BF26CA49cB` |
+| `EXFactory` | `0xba9DBf3C09F50F301531Eb60440c14151632F9d5` |
+| `ProtocolRolesController` | `0x9a43406488dc72b3c6b76B5462A466F8AAdb7d24` |
+| `EXRouter` | `0xbE1882e3De9250e875d6ecbBf30D924f4e38036E` |
