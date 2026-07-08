@@ -1,0 +1,55 @@
+{
+  "network": {
+    "name": "mainnet",
+    "chainId": 999
+  },
+  "evm": {
+    "marketParams": {
+      "admin": "0x0000000000000000000000000000000000000000",
+      "operator": "0x0000000000000000000000000000000000000000",
+      "opBond": "1000000000000000000000",
+      "validator": "0x0000000000000000000000000000000000000000",
+      "gate": "0x0000000000000000000000000000000000000000",
+      "lstName": "Nunchi YEX Liquid Stake",
+      "lstSymbol": "nyHYPE",
+      "hyperCoreDeployer": "0x0000000000000000000000000000000000000000",
+      "deployerTreasury": "0x0000000000000000000000000000000000000000",
+      "buybackBps": 1000
+    },
+    "cancelRecipient": "0x0000000000000000000000000000000000000000"
+  },
+  "core": {
+    "registerAsset": {
+      "assetRequest": {
+        "coin": "BTCSWP",
+        "szDecimals": 2,
+        "oraclePx": "75000",
+        "marginTableId": 1,
+        "onlyIsolated": false
+      },
+      "dex": "yex",
+      "schema": {
+        "fullName": "Nunchi Yield Exchange",
+        "collateralToken": 0
+      }
+    },
+    "subdeployers": [
+      { "variant": "registerAsset", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setOracle", "address": "0x4Ff8011365Ce30240Ad0F2F202C7906dCf363150" },
+      { "variant": "setFundingMultipliers", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setFundingInterestRates", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "haltTrading", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setMarginTableIds", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setOpenInterestCaps", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setGrowthModes", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setMarginModes", "address": "0x0000000000000000000000000000000000000000" },
+      { "variant": "setPerpAnnotation", "address": "0x0000000000000000000000000000000000000000" }
+    ]
+  },
+  "deployed": {
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "exManager": "0x0000000000000000000000000000000000000000",
+    "bonded": false,
+    "cancelled": false
+  }
+}
